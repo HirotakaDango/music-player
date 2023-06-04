@@ -53,7 +53,7 @@ foreach ($musicFiles as $index => $file) {
     <div class="container">
       <h1 class="text-center fw-bold mt-3"><i class="bi bi-play-circle-fill"></i> Music Library</h1>
       <div class="input-group mb-3 mt-3">
-        <input type="text" class="form-control me-2 ms-2" placeholder="Search song" id="search-input">
+        <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search song" id="search-input">
       </div>
       <table class="table table-borderless">
         <thead>
@@ -65,8 +65,8 @@ foreach ($musicFiles as $index => $file) {
         <tbody>
           <?php foreach ($songList as $song): ?>
             <tr>
-              <td><a class="text-decoration-none music text-start w-100 text-white btn" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
-              <td><a class="text-decoration-none music text-start w-100 text-white btn" href="artist.php?name=<?php echo $song['artist']; ?>"><?php echo $song['artist']; ?></a></td>
+              <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
+              <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="artist.php?name=<?php echo $song['artist']; ?>"><?php echo $song['artist']; ?></a></td>
             </tr>
           <?php endforeach; ?>
         </tbody>

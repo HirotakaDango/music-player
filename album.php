@@ -38,13 +38,14 @@ foreach ($musicFiles as $index => $file) {
   );
 }
 
-// Get the artist name from the query parameter
-$artistName = $_GET['name'] ?? '';
+// Get the unique album names
+$albumList = array_unique(array_column($songList, 'album'));
 
-// Filter the song list based on the artist name
-$filteredSongs = array_filter($songList, function($song) use ($artistName) {
-  return $song['artist'] === $artistName;
-});
+if (isset($_GET['album'])) {
+  $selectedAlbum = $_GET['album'];
+} else {
+  $selectedAlbum = '';
+}
 ?>
 
 <!DOCTYPE html>
@@ -54,12 +55,14 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
-    <title>Music Player</title>
+    <title><?php echo $song['album']; ?></title>
   </head>
 
   <body>
     <div class="container">
-      <h1 class="text-center fw-bold mt-3"><a class="text-decoration-none text-white" href="index.php"><i class="bi bi-play-circle-fill"></i> Music Library</a> - <?php echo $artistName; ?></h1>
+      <?php if ($selectedAlbum !== ''): ?>
+        <h1 class="text-center fw-bold mt-3"><a class="text-decoration-none text-white" href="index.php"><i class="bi bi-play-circle-fill"></i> Music Library</a> - <?php echo $selectedAlbum; ?></h1>
+      <?php endif; ?> 
       <div class="input-group mb-3 mt-3">
         <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search song" id="search-input">
       </div>
@@ -71,11 +74,13 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
           </tr>
         </thead>
         <tbody>
-          <?php foreach ($filteredSongs as $song): ?>
-            <tr>
-              <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
-              <td><a href="#" class="btn border-0 disabled text-white fw-semibold"><?php echo $song['artist']; ?></a></td>
-            </tr>
+          <?php foreach ($songList as $song): ?>
+            <?php if ($selectedAlbum === '' || $selectedAlbum === $song['album']): ?>
+              <tr>
+                <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
+                <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="artist.php?name=<?php echo $song['artist']; ?>"><?php echo $song['artist']; ?></a></td>
+              </tr>
+            <?php endif; ?>
           <?php endforeach; ?>
         </tbody>
       </table>

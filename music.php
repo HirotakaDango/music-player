@@ -43,8 +43,10 @@ if (isset($musicFiles[$id])) {
       <a class="btn btn-sm btn-info text-white rounded-pill fw-bold mb-2 mt-2" href="index.php"><i class="bi bi-chevron-left"></i> Back</a>
 
       <h2 class="text-center fw-bold display-5"><?= $title ?></h2>
-      <p class="text-center fw-bold"><?= $artist . ' - ' . $album ?></p>
-
+      <p class="text-center fw-bold">
+        <a class="text-decoration-none text-white" href="artist.php?name=<?php echo $artist; ?>"><?php echo $artist; ?></a> - 
+        <a class="text-decoration-none text-white" href="album.php?album=<?php echo $album; ?>"><?php echo $album; ?></a>
+      </p> 
       <?php if ($imageData && $imageMime): ?>
         <div class="text-center mb-2">
           <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
