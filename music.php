@@ -41,7 +41,7 @@ if (isset($musicFiles[$id])) {
     <div class="container-fluid">
       <a class="btn btn-sm btn-info text-white rounded-pill fw-bold mb-2 mt-2" href="index.php"><i class="bi bi-chevron-left"></i> back</a>
       <div class="row featurette">
-        <div class="col-md-5 order-md-1">
+        <div class="col-md-5 order-md-1 mb-5">
 
         <h2 class="text-center fw-bold display-5"><?= $title ?></h2>
         <p class="text-center fw-bold">
@@ -71,7 +71,7 @@ if (isset($musicFiles[$id])) {
       </div>
       
       <div class="col-md-7 order-md-2">
-        <h3 class="text-start fw-semibold mt-5"><i class="bi bi-music-note-list"></i> song list</h3>
+        <h3 class="text-start fw-semibold"><i class="bi bi-music-note-list"></i> song list</h3>
         <table class="table table-borderless">
           <thead>
             <tr>
