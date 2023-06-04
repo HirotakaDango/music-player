@@ -58,16 +58,18 @@ if (isset($musicFiles[$id])) {
           </div>
         <?php endif; ?> 
 
-        <div class="w-100 bg-white rounded">
-          <div class="container-fluid">
+        <div class="w-100 bg-white fixed-bottom">
+          <div class="d-flex justify-content-between align-items-center">
             <audio id="player" controls>
               <source src="<?= $file ?>" type="audio/mpeg">
               Your browser does not support the audio element.
             </audio>
+            <div class="btn-group">
+              <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold"><i class="bi bi-skip-start-circle fs-5"></i></a>
+              <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold"><i class="bi bi-skip-end-circle fs-5"></i></a>
+            </div>
           </div>
         </div>
-        <a href="music.php?id=<?= $previousId ?>" class="btn btn-info text-white float-start fw-bold mt-2"><i class="bi bi-arrow-left-circle-fill"></i> Prev</a>
-        <a href="music.php?id=<?= $nextId ?>" class="btn btn-info text-white float-end fw-bold mt-2">Next <i class="bi bi-arrow-right-circle-fill"></i></a>
       </div>
       
       <div class="col-md-7 order-md-2">
