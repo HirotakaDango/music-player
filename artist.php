@@ -37,6 +37,14 @@ foreach ($musicFiles as $index => $file) {
     'album' => $album
   );
 }
+
+// Get the artist name from the query parameter
+$artistName = $_GET['name'] ?? '';
+
+// Filter the song list based on the artist name
+$filteredSongs = array_filter($songList, function($song) use ($artistName) {
+  return $song['artist'] === $artistName;
+});
 ?>
 
 <!DOCTYPE html>
@@ -51,7 +59,7 @@ foreach ($musicFiles as $index => $file) {
 
   <body>
     <div class="container">
-      <h1 class="text-center fw-bold mt-3"><i class="bi bi-play-circle-fill"></i> Music Library</h1>
+      <h1 class="text-center fw-bold mt-3"><i class="bi bi-play-circle-fill"></i> Music Library - <?php echo $artistName; ?></h1>
       <div class="input-group mb-3 mt-3">
         <input type="text" class="form-control me-2 ms-2" placeholder="Search song" id="search-input">
       </div>
@@ -63,10 +71,10 @@ foreach ($musicFiles as $index => $file) {
           </tr>
         </thead>
         <tbody>
-          <?php foreach ($songList as $song): ?>
+          <?php foreach ($filteredSongs as $song): ?>
             <tr>
-              <td><a class="text-decoration-none music text-start w-100 text-white btn" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
-              <td><a class="text-decoration-none music text-start w-100 text-white btn" href="artist.php?name=<?php echo $song['artist']; ?>"><?php echo $song['artist']; ?></a></td>
+              <td><a class="text-decoration-none music text-start w-100 text-white btn" href="music.php?id=<?php echo $song['index']; ?>"><?php echo (strlen($song['songName']) > 25) ? substr($song['songName'], 0, 25) . '...' : $song['songName']; ?></a></td>
+              <td><?php echo $song['artist']; ?></td>
             </tr>
           <?php endforeach; ?>
         </tbody>
