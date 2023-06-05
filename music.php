@@ -71,7 +71,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
               <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
             </div>
           <?php endif; ?> 
-          <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1" data-bs-toggle="modal" data-bs-target="#songInfo">
+          <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1 rounded-1" data-bs-toggle="modal" data-bs-target="#songInfo">
             <i class="bi bi-info-circle-fill"></i>
           </button> 
         </div>
