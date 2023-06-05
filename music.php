@@ -67,8 +67,8 @@ if (isset($musicFiles[$id])) {
               </audio>
             </div>
             <div class="btn-group">
-              <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
-              <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
+              <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
+              <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
             </div>
           </div>
         </div>
