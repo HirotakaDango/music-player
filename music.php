@@ -108,6 +108,7 @@ if (isset($musicFiles[$id])) {
         </table>
       </div>
     </div>
+    <br><br>
     <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', function () {

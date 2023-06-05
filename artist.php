@@ -80,6 +80,7 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
         </tbody>
       </table>
     </div>
+    <br><br>
     <script>
       // Get the search input element
       const searchInput = document.getElementById('search-input');
