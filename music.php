@@ -25,6 +25,19 @@ if (isset($musicFiles[$id])) {
   echo '<p>Invalid music ID.</p>';
   exit();
 }
+
+function formatBytes($bytes, $precision = 2) {
+  $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  $bytes = max($bytes, 0);
+  $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+  $pow = min($pow, count($units) - 1);
+  $bytes /= (1 << (10 * $pow));
+  return round($bytes, $precision) . ' ' . $units[$pow];
+}
+
+$bitrate = !empty($fileInfo['audio']['bitrate']) ? round($fileInfo['audio']['bitrate'] / 1000) . 'kbps' : 'Unknown';
+$size = !empty($fileInfo['filesize']) ? formatBytes($fileInfo['filesize']) : 'Unknown';
+$audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknown';
 ?>
 
 <!DOCTYPE html>
@@ -48,16 +61,42 @@ if (isset($musicFiles[$id])) {
           <a class="text-decoration-none text-white" href="artist.php?name=<?php echo $artist; ?>"><?php echo $artist; ?></a> - 
           <a class="text-decoration-none text-white" href="album.php?album=<?php echo $album; ?>"><?php echo $album; ?></a>
         </p> 
-        <?php if ($imageData && $imageMime): ?>
-          <div class="text-center mb-2">
-            <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
-          </div>
-        <?php else: ?>
-          <div class="text-center mb-2">
-            <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
-          </div>
-        <?php endif; ?> 
+        <div class="position-relative">
+          <?php if ($imageData && $imageMime): ?>
+            <div class="text-center mb-2">
+              <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
+            </div>
+          <?php else: ?>
+            <div class="text-center mb-2">
+              <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
+            </div>
+          <?php endif; ?> 
+          <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1" data-bs-toggle="modal" data-bs-target="#songInfo">
+            <i class="bi bi-info-circle-fill"></i>
+          </button> 
+        </div>
 
+        <div class="modal fade" id="songInfo" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h1 class="modal-title fs-5 fw-bold" id="exampleModalLabel"><?= $title ?></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <div class="metadata">
+                  <p class="fw-semibold text-start">Artist: <?= $artist ?></p>
+                  <p class="fw-semibold text-start">Album: <?= $album ?></p>
+                  <p class="fw-semibold text-start">Bitrate: <?= $bitrate ?></p>
+                  <p class="fw-semibold text-start">Size: <?= $size ?></p>
+                  <p class="fw-semibold text-start">Audio Type: <?= $audioType ?></p>
+                  <p class="fw-semibold text-start">Image Type: <?= $imageMime ?></p>
+                  <a class="btn btn-primary fw-semibold w-100" href="<?= $file ?>" download>Download Song</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="w-100 bg-dark fixed-bottom">
           <div class="d-flex justify-content-between align-items-center">
             <div class="w-100">
@@ -122,6 +161,7 @@ if (isset($musicFiles[$id])) {
           window.location.href = 'music.php?id=<?= $nextId ?>';
         });
       });
-    </script> 
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
   </body>
 </html> 
