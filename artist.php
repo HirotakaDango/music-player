@@ -58,7 +58,7 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
   </head>
 
   <body>
-    <div class="container">
+    <div class="container-fluid">
       <h1 class="text-center fw-bold mt-3"><a class="text-decoration-none text-white" href="index.php"><i class="bi bi-play-circle-fill"></i> Music Library</a> - <?php echo $artistName; ?></h1>
       <div class="input-group mb-3 mt-3">
         <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search song" id="search-input">

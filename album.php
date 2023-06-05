@@ -59,7 +59,7 @@ if (isset($_GET['album'])) {
   </head>
 
   <body>
-    <div class="container">
+    <div class="container-fluid">
       <?php if ($selectedAlbum !== ''): ?>
         <h1 class="text-center fw-bold mt-3"><a class="text-decoration-none text-white" href="index.php"><i class="bi bi-play-circle-fill"></i> Music Library</a> - <?php echo $selectedAlbum; ?></h1>
       <?php endif; ?> 

@@ -46,14 +46,25 @@ foreach ($musicFiles as $index => $file) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+    <link rel="stylesheet" href="style.css">
     <title>Music Player</title>
   </head>
-
   <body>
-    <div class="container">
-      <h1 class="text-center fw-bold mt-3"><i class="bi bi-play-circle-fill"></i> Music Library</h1>
+    <div class="container-fluid">
+      <a class="text-decoration-none" href="index.php"><h1 class="text-center fw-bold mt-3"><i class="bi bi-play-circle-fill"></i> Music Library</h1></a>
       <div class="input-group mb-3 mt-3">
         <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search song" id="search-input">
+      </div>
+      <h3 class="text-start fw-semibold"><i class="bi bi-people-fill"></i> artist</h3>
+      <div class="artist-container mb-3">
+        <?php
+          $artists = array_unique(array_column($songList, 'artist')); // Get unique artist names
+          foreach ($artists as $artist):
+        ?>
+          <div class="artist-card">
+            <a class="btn btn-lg btn-outline-secondary music text-center w-100 text-white btn-a fw-semibold text-wrap h-100" href="artist.php?name=<?php echo $artist; ?>"><?php echo $artist; ?></a>
+          </div> 
+        <?php endforeach; ?>
       </div>
       <table class="table table-borderless">
         <thead>

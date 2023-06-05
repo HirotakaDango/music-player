@@ -1,0 +1,22 @@
+.artist-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  scroll-snap-type: x mandatory;
+  display: flex; /* Add this line */
+}
+  
+.artist-card {
+  flex: 0 0 auto; /* Add this line */
+  width: 200px;
+  margin-right: 10px;
+  scroll-snap-align: start;
+  display: flex; /* Add this line */
+}
+  
+.btn-a {
+  flex: 1; /* Add this line */
+  display: flex; /* Add this line */
+  align-items: center; /* Add this line */
+  justify-content: center; /* Add this line */
+}
