@@ -34,7 +34,7 @@ if (isset($musicFiles[$id])) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.6.8/plyr.css">
+    <link rel="stylesheet" href="plyr.css">
     <title><?= $title ?></title>
   </head>
   <body>
@@ -58,7 +58,7 @@ if (isset($musicFiles[$id])) {
           </div>
         <?php endif; ?> 
 
-        <div class="w-100 bg-white fixed-bottom">
+        <div class="w-100 bg-dark fixed-bottom">
           <div class="d-flex justify-content-between align-items-center">
             <div class="w-100">
               <audio id="player" controls>
@@ -67,8 +67,8 @@ if (isset($musicFiles[$id])) {
               </audio>
             </div>
             <div class="btn-group">
-              <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold"><i class="bi bi-skip-start-circle fs-5"></i></a>
-              <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold"><i class="bi bi-skip-end-circle fs-5"></i></a>
+              <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
+              <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
             </div>
           </div>
         </div>
