@@ -87,6 +87,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                 <div class="metadata">
                   <p class="fw-semibold text-start">Artist: <?= $artist ?></p>
                   <p class="fw-semibold text-start">Album: <?= $album ?></p>
+                  <p class="fw-semibold text-start">Duration: <?= $duration ?></p>
                   <p class="fw-semibold text-start">Bitrate: <?= $bitrate ?></p>
                   <p class="fw-semibold text-start">Size: <?= $size ?></p>
                   <p class="fw-semibold text-start">Audio Type: <?= $audioType ?></p>
