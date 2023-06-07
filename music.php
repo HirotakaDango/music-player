@@ -98,7 +98,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
             </div>
           </div>
         </div>
-        <div class="w-100 bg-dark fixed-bottom">
+        <div class="w-100 bg-dark fixed-bottom border-2 border-top">
           <div class="d-flex justify-content-between align-items-center">
             <div class="w-100">
               <audio id="player" controls>
@@ -150,19 +150,72 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
     </div>
     <br><br>
     <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        const player = new Plyr('#player');
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const player = new Plyr('#player');
 
-        // Autoplay the player when the page loads
-        player.play();
+      // Autoplay the player when the page loads
+      player.play();
 
-        player.on('ended', function(event) {
-          // Redirect to the next song URL
-          window.location.href = 'music.php?id=<?= $nextId ?>';
-        });
+      player.on('ended', function(event) {
+        // Redirect to the next song URL
+        window.location.href = 'music.php?id=<?= $nextId ?>';
       });
-    </script>
+    });
+
+    async function transcodeAudio(file, desiredBitrate) {
+      const ffmpeg = createFFmpeg({ log: true });
+
+      await ffmpeg.load();
+
+      const inputPath = `/input/${file.name}`;
+      const outputPath = `/output/${file.name}`;
+
+      ffmpeg.FS('writeFile', inputPath, await fetchFile(file));
+
+      await ffmpeg.run('-i', inputPath, '-b:a', desiredBitrate, outputPath);
+
+      const transcodedData = ffmpeg.FS('readFile', outputPath);
+      const transcodedBlob = new Blob([transcodedData.buffer], { type: 'audio/mpeg' });
+
+      // Handle the transcoded audio data (e.g., play it in the browser or offer it as a download)
+      const transcodedUrl = URL.createObjectURL(transcodedBlob);
+      player.source = { type: 'audio', sources: [{ src: transcodedUrl, type: 'audio/mpeg' }] };
+
+      ffmpeg.FS('unlink', inputPath);
+      ffmpeg.FS('unlink', outputPath);
+    }
+
+    async function fetchFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(new Uint8Array(reader.result));
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    async function handleTranscode(event) {
+      const fileInput = event.target;
+      const file = fileInput.files[0];
+      const desiredBitrate = '128k'; // Specify the desired bitrate for transcoding here
+
+      if (file) {
+        await transcodeAudio(file, desiredBitrate);
+      }
+    }
+
+    const inputElement = document.createElement('input');
+    inputElement.type = 'file';
+    inputElement.accept = 'audio/mpeg';
+    inputElement.onchange = handleTranscode;
+    inputElement.hidden = true;
+    document.body.appendChild(inputElement);
+
+    function openFilePicker() {
+      inputElement.click();
+    }
+  </script> 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
   </body>
 </html> 
