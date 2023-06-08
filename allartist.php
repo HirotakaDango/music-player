@@ -38,14 +38,28 @@ foreach ($musicFiles as $index => $file) {
   );
 }
 
-// Get the unique album names
-$albumList = array_unique(array_column($songList, 'album'));
+// Get unique artists from the song list
+$artists = array_unique(array_column($songList, 'artist'));
 
-if (isset($_GET['album'])) {
-  $selectedAlbum = $_GET['album'];
-} else {
-  $selectedAlbum = '';
+// Sort the artists alphabetically
+sort($artists, SORT_LOCALE_STRING);
+
+// Create an array to hold the artists sorted by category
+$artistsByCategory = array();
+
+// Group artists by the first letter of their name
+foreach ($artists as $artist) {
+  $firstLetter = mb_strtoupper(mb_substr($artist, 0, 1));
+
+  if (!isset($artistsByCategory[$firstLetter])) {
+    $artistsByCategory[$firstLetter] = array();
+  }
+
+  $artistsByCategory[$firstLetter][] = $artist;
 }
+
+// Sort the categories alphabetically
+ksort($artistsByCategory, SORT_LOCALE_STRING);
 ?>
 
 <!DOCTYPE html>
@@ -55,33 +69,24 @@ if (isset($_GET['album'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
-    <title><?php echo $song['album']; ?></title>
+    <title>All Artists</title>
   </head>
-
   <body>
     <?php include('header.php'); ?>
     <div class="container-fluid">
-      <?php if ($selectedAlbum !== ''): ?>
-        <h5 class="text-start fw-semibold"><i class="bi bi-people-fill"></i> Album: <?php echo $selectedAlbum; ?></h5>
-      <?php endif; ?> 
-      <table class="table table-borderless">
-        <thead>
-          <tr>
-            <th>Song</th>
-            <th>Artist</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php foreach ($songList as $song): ?>
-            <?php if ($selectedAlbum === '' || $selectedAlbum === $song['album']): ?>
-              <tr>
-                <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
-                <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="artist.php?name=<?php echo $song['artist']; ?>"><?php echo $song['artist']; ?></a></td>
-              </tr>
-            <?php endif; ?>
+      <div class="input-group mb-3 mt-3">
+        <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search artist" id="search-input">
+      </div>
+      <?php foreach ($artistsByCategory as $category => $categoryArtists): ?>
+        <h5 class="text-start fw-semibold">Category <?php echo $category; ?></h5>
+        <div class="row">
+          <?php foreach ($categoryArtists as $artist): ?>
+            <div class="col-md-3 col-sm-6">
+              <a class="opacity-75 music btn tag-button btn-outline-light mb-2 fw-bold text-start w-100" href="artist.php?name=<?php echo urlencode($artist); ?>"><?php echo $artist; ?></a>
+            </div>
           <?php endforeach; ?>
-        </tbody>
-      </table>
+        </div>
+      <?php endforeach; ?>
     </div>
     <br><br>
     <script>

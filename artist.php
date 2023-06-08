@@ -58,11 +58,9 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
   </head>
 
   <body>
+    <?php include('header.php'); ?>
     <div class="container-fluid">
-      <h1 class="text-center fw-bold mt-3"><a class="text-decoration-none text-white" href="index.php"><i class="bi bi-play-circle-fill"></i> Music Library</a> - <?php echo $artistName; ?></h1>
-      <div class="input-group mb-3 mt-3">
-        <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search song" id="search-input">
-      </div>
+      <h5 class="text-start fw-semibold"><i class="bi bi-people-fill"></i> Artist: <?php echo $artistName; ?></h5>
       <table class="table table-borderless">
         <thead>
           <tr>
@@ -81,28 +79,5 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
       </table>
     </div>
     <br><br>
-    <script>
-      // Get the search input element
-      const searchInput = document.getElementById('search-input');
-
-      // Get all the tag buttons
-      const tagButtons = document.querySelectorAll('.music');
-
-      // Add an event listener to the search input field
-      searchInput.addEventListener('input', () => {
-        const searchTerm = searchInput.value.toLowerCase();
-
-        // Filter the tag buttons based on the search term
-        tagButtons.forEach(button => {
-          const tag = button.textContent.toLowerCase();
-
-          if (tag.includes(searchTerm)) {
-            button.style.display = 'inline-block';
-          } else {
-            button.style.display = 'none';
-          }
-        });
-      });
-    </script>
   </body>
 </html>

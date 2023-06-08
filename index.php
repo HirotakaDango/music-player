@@ -50,21 +50,10 @@ foreach ($musicFiles as $index => $file) {
     <title>Music Player</title>
   </head>
   <body>
+    <?php include('header.php'); ?>
     <div class="container-fluid">
-      <a class="text-decoration-none" href="index.php"><h1 class="text-center fw-bold mt-3"><i class="bi bi-play-circle-fill"></i> Music Library</h1></a>
       <div class="input-group mb-3 mt-3">
         <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search song" id="search-input">
-      </div>
-      <h3 class="text-start fw-semibold"><i class="bi bi-people-fill"></i> artist</h3>
-      <div class="artist-container mb-3">
-        <?php
-          $artists = array_unique(array_column($songList, 'artist')); // Get unique artist names
-          foreach ($artists as $artist):
-        ?>
-          <div class="artist-card">
-            <a class="btn btn-lg btn-outline-secondary music text-center w-100 text-white btn-a fw-semibold text-wrap h-100" href="artist.php?name=<?php echo $artist; ?>"><?php echo $artist; ?></a>
-          </div> 
-        <?php endforeach; ?>
       </div>
       <table class="table table-borderless">
         <thead>
@@ -76,8 +65,8 @@ foreach ($musicFiles as $index => $file) {
         <tbody>
           <?php foreach ($songList as $song): ?>
             <tr>
-              <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
-              <td><a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="artist.php?name=<?php echo $song['artist']; ?>"><?php echo $song['artist']; ?></a></td>
+              <td><a class="text-decoration-none music text-start w-100 text-white btn fw-bold" href="music.php?id=<?php echo $song['index']; ?>"><?php echo $song['songName']; ?></a></td>
+              <td><a class="text-decoration-none music text-start w-100 text-white btn fw-bold" href="artist.php?name=<?php echo $song['artist']; ?>"><?php echo $song['artist']; ?></a></td>
             </tr>
           <?php endforeach; ?>
         </tbody>
@@ -107,5 +96,6 @@ foreach ($musicFiles as $index => $file) {
         });
       });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
   </body>
 </html>
