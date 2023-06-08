@@ -52,170 +52,138 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
   </head>
   <body>
     <div class="container-fluid">
-      <a class="btn btn-sm btn-info text-white rounded-pill fw-bold mb-2 mt-2" href="index.php"><i class="bi bi-chevron-left"></i> back</a>
-      <div class="row featurette">
+      <div class="mb-3">
+        <a class="btn text-white rounded-pill fw-bold position-absolute start-0 top-0 ms-2 mt-2" href="index.php">
+          <i class="bi bi-chevron-down" style="-webkit-text-stroke: 2px white;"></i>
+        </a>
+        <button class="btn text-white rounded-pill fw-bold position-absolute end-0 top-0 me-2 mt-2" onclick="sharePage()">
+          <i class="bi bi-share-fill" style="-webkit-text-stroke: 1px white;"></i>
+        </button>
+      </div>
+      <div class="row featurette mt-5">
         <div class="col-md-5 order-md-1 mb-5">
-
-        <h2 class="text-center fw-bold display-5"><?= $title ?></h2>
-        <p class="text-center fw-bold">
-          <a class="text-decoration-none text-white" href="artist.php?name=<?php echo $artist; ?>"><?php echo $artist; ?></a> - 
-          <a class="text-decoration-none text-white" href="album.php?album=<?php echo $album; ?>"><?php echo $album; ?></a>
-        </p> 
-        <div class="position-relative">
-          <?php if ($imageData && $imageMime): ?>
-            <div class="text-center mb-2">
-              <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
-            </div>
-          <?php else: ?>
-            <div class="text-center mb-2">
-              <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
-            </div>
-          <?php endif; ?> 
-          <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1 rounded-1" data-bs-toggle="modal" data-bs-target="#songInfo">
-            <i class="bi bi-info-circle-fill"></i>
-          </button> 
-        </div>
-
-        <div class="modal fade" id="songInfo" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
-          <div class="modal-dialog">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h1 class="modal-title fs-5 fw-bold" id="exampleModalLabel"><?= $title ?></h1>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <h4 class="text-center fw-bold display-5"><?= $title ?></h4>
+          <p class="text-center fw-bold">
+            <a class="text-decoration-none text-white" href="artist.php?name=<?= $artist ?>"><?php echo $artist; ?></a> -
+            <a class="text-decoration-none text-white" href="album.php?album=<?= $album ?>"><?php echo $album; ?></a>
+          </p>
+          <div class="position-relative">
+            <?php if ($imageData && $imageMime): ?>
+              <div class="text-center mb-2">
+                <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
               </div>
-              <div class="modal-body">
-                <div class="metadata">
-                  <p class="fw-semibold text-start">Artist: <?= $artist ?></p>
-                  <p class="fw-semibold text-start">Album: <?= $album ?></p>
-                  <p class="fw-semibold text-start">Duration: <?= $duration ?></p>
-                  <p class="fw-semibold text-start">Bitrate: <?= $bitrate ?></p>
-                  <p class="fw-semibold text-start">Size: <?= $size ?></p>
-                  <p class="fw-semibold text-start">Audio Type: <?= $audioType ?></p>
-                  <p class="fw-semibold text-start">Image Type: <?= $imageMime ?></p>
-                  <a class="btn btn-primary fw-semibold w-100" href="<?= $file ?>" download>Download Song</a>
+            <?php else: ?>
+              <div class="text-center mb-2">
+                <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
+              </div>
+            <?php endif; ?>
+            <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1 rounded-1" data-bs-toggle="modal" data-bs-target="#songInfo">
+              <i class="bi bi-info-circle-fill"></i>
+            </button>
+          </div>
+          <div class="modal fade" id="songInfo" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h1 class="modal-title fs-5 fw-bold" id="exampleModalLabel"><?= $title ?></h1>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="metadata">
+                    <p class="fw-semibold text-start">Artist: <?= $artist ?></p>
+                    <p class="fw-semibold text-start">Album: <?= $album ?></p>
+                    <p class="fw-semibold text-start">Duration: <?= $duration ?></p>
+                    <p class="fw-semibold text-start">Bitrate: <?= $bitrate ?></p>
+                    <p class="fw-semibold text-start">Size: <?= $size ?></p>
+                    <p class="fw-semibold text-start">Audio Type: <?= $audioType ?></p>
+                    <p class="fw-semibold text-start">Image Type: <?= $imageMime ?></p>
+                    <a class="btn btn-primary fw-semibold w-100" href="<?= $file ?>" download>Download Song</a>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        <div class="w-100 bg-dark fixed-bottom border-2 border-top">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="w-100">
-              <audio id="player" controls>
-                <source src="<?= $file ?>" type="audio/mpeg">
-                Your browser does not support the audio element.
-              </audio>
-            </div>
-            <div class="btn-group">
-              <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
-              <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
+          <div class="w-100 bg-dark fixed-bottom border-2 border-top">
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="w-100">
+                <audio id="player" controls>
+                  <source src="<?= $file ?>" type="audio/mpeg">
+                  Your browser does not support the audio element.
+                </audio>
+              </div>
+              <div class="btn-group">
+                <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
+                <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      
-      <div class="col-md-7 order-md-2">
-        <h3 class="text-start fw-semibold"><i class="bi bi-music-note-list"></i> song list</h3>
-        <table class="table table-borderless">
-          <thead>
-            <tr>
-              <th>Song</th>
-              <th>Artist</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($musicFiles as $index => $musicFile): ?>
-              <?php
-                $fileInfo = $getID3->analyze($musicFile);
-                getid3_lib::CopyTagsToComments($fileInfo);
-                $songName = !empty($fileInfo['comments_html']['title']) ? implode(', ', $fileInfo['comments_html']['title']) : 'Unknown';
-                $songArtist = !empty($fileInfo['comments_html']['artist']) ? implode(', ', $fileInfo['comments_html']['artist']) : 'Unknown';
-              ?>
+        <div class="col-md-7 order-md-2">
+          <h3 class="text-start fw-semibold"><i class="bi bi-music-note-list"></i> song list</h3>
+          <table class="table table-borderless">
+            <thead>
               <tr>
-                <td>
-                  <?php if ($index == $id): ?>
-                    <span class="text-decoration-none music text-start w-100 text-white btn fw-semibold"><?= $songName ?></span>
-                  <?php else: ?>
-                    <a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?= $index ?>"><?= $songName ?></a>
-                  <?php endif; ?>
-                </td>
-                <td>
-                  <a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="artist.php?name=<?php echo $songArtist; ?>"><?php echo $songArtist; ?></a>
-                </td>
+                <th>Song</th>
+                <th>Artist</th>
               </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <?php foreach ($musicFiles as $index => $musicFile): ?>
+                <?php
+                  $fileInfo = $getID3->analyze($musicFile);
+                  getid3_lib::CopyTagsToComments($fileInfo);
+                  $songName = !empty($fileInfo['comments_html']['title']) ? implode(', ', $fileInfo['comments_html']['title']) : 'Unknown';
+                  $songArtist = !empty($fileInfo['comments_html']['artist']) ? implode(', ', $fileInfo['comments_html']['artist']) : 'Unknown';
+                ?>
+                <tr>
+                  <td>
+                    <?php if ($index == $id): ?>
+                      <span class="text-decoration-none music text-start w-100 text-white btn fw-semibold"><?= $songName ?></span>
+                    <?php else: ?>
+                      <a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?= $index ?>"><?= $songName ?></a>
+                    <?php endif; ?>
+                  </td>
+                  <td>
+                    <a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="artist.php?name=<?php echo $songArtist; ?>"><?php echo $songArtist; ?></a>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
     <br><br>
-    <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      const player = new Plyr('#player');
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        const player = new Plyr('#player');
 
-      // Autoplay the player when the page loads
-      player.play();
+        // Autoplay the player when the page loads
+        player.play();
 
-      player.on('ended', function(event) {
-        // Redirect to the next song URL
-        window.location.href = 'music.php?id=<?= $nextId ?>';
+        player.on('ended', function(event) {
+          // Redirect to the next song URL
+          window.location.href = 'music.php?id=<?= $nextId ?>';
+        });
       });
-    });
-
-    async function transcodeAudio(file, desiredBitrate) {
-      const ffmpeg = createFFmpeg({ log: true });
-
-      await ffmpeg.load();
-
-      const inputPath = `/input/${file.name}`;
-      const outputPath = `/output/${file.name}`;
-
-      ffmpeg.FS('writeFile', inputPath, await fetchFile(file));
-
-      await ffmpeg.run('-i', inputPath, '-b:a', desiredBitrate, outputPath);
-
-      const transcodedData = ffmpeg.FS('readFile', outputPath);
-      const transcodedBlob = new Blob([transcodedData.buffer], { type: 'audio/mpeg' });
-
-      // Handle the transcoded audio data (e.g., play it in the browser or offer it as a download)
-      const transcodedUrl = URL.createObjectURL(transcodedBlob);
-      player.source = { type: 'audio', sources: [{ src: transcodedUrl, type: 'audio/mpeg' }] };
-
-      ffmpeg.FS('unlink', inputPath);
-      ffmpeg.FS('unlink', outputPath);
-    }
-
-    async function fetchFile(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(new Uint8Array(reader.result));
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-      });
-    }
-
-    async function handleTranscode(event) {
-      const fileInput = event.target;
-      const file = fileInput.files[0];
-      const desiredBitrate = '128k'; // Specify the desired bitrate for transcoding here
-
-      if (file) {
-        await transcodeAudio(file, desiredBitrate);
+    </script>
+    <script>
+      function sharePage() {
+        if (navigator.share) {
+          navigator.share({
+            title: document.title,
+            url: window.location.href
+          }).then(() => {
+            console.log('Page shared successfully.');
+          }).catch((error) => {
+            console.error('Error sharing page:', error);
+          });
+        } else {
+          console.log('Web Share API not supported.');
+        }
       }
-    }
-
-    const inputElement = document.createElement('input');
-    inputElement.type = 'file';
-    inputElement.accept = 'audio/mpeg';
-    inputElement.onchange = handleTranscode;
-    inputElement.hidden = true;
-    document.body.appendChild(inputElement);
-
-    function openFilePicker() {
-      inputElement.click();
-    }
-  </script> 
+    </script>
+    <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
   </body>
-</html> 
+</html>
