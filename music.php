@@ -120,40 +120,33 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
         </div>
         <div class="col-md-7 order-md-2">
           <h3 class="text-start fw-semibold"><i class="bi bi-music-note-list"></i> song list</h3>
-          <table class="table table-borderless">
-            <thead>
-              <tr>
-                <th>Song</th>
-                <th>Artist</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($musicFiles as $index => $musicFile): ?>
-                <?php
-                  $fileInfo = $getID3->analyze($musicFile);
-                  getid3_lib::CopyTagsToComments($fileInfo);
-                  $songName = !empty($fileInfo['comments_html']['title']) ? implode(', ', $fileInfo['comments_html']['title']) : 'Unknown';
-                  $songArtist = !empty($fileInfo['comments_html']['artist']) ? implode(', ', $fileInfo['comments_html']['artist']) : 'Unknown';
-                ?>
-                <tr>
-                  <td>
-                    <?php if ($index == $id): ?>
-                      <span class="text-decoration-none music text-start w-100 text-white btn fw-semibold"><?= $songName ?></span>
-                    <?php else: ?>
-                      <a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="music.php?id=<?= $index ?>"><?= $songName ?></a>
-                    <?php endif; ?>
-                  </td>
-                  <td>
-                    <a class="text-decoration-none music text-start w-100 text-white btn fw-semibold" href="artist.php?name=<?php echo $songArtist; ?>"><?php echo $songArtist; ?></a>
-                  </td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
+          <?php foreach ($musicFiles as $index => $musicFile): ?>
+            <?php
+              $fileInfo = $getID3->analyze($musicFile);
+              getid3_lib::CopyTagsToComments($fileInfo);
+              $songName = !empty($fileInfo['comments_html']['title']) ? implode(', ', $fileInfo['comments_html']['title']) : 'Unknown';
+              $songArtist = !empty($fileInfo['comments_html']['artist']) ? implode(', ', $fileInfo['comments_html']['artist']) : 'Unknown';
+              $songAlbum = !empty($fileInfo['comments_html']['album']) ? implode(', ', $fileInfo['comments_html']['album']) : 'Unknown';
+            ?>
+            <div class="d-flex justify-content-between align-items-center border-bottom">
+              <a class="text-decoration-none music text-start w-75 text-white btn fw-bold" href="music.php?id=<?= $index ?>">
+                <?= $songName ?><br>
+                <small class="text-muted"><?= $songArtist ?></small>
+              </a>
+              <div class="dropdown">
+                <button class="text-decoration-none text-white btn fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
+                <ul class="dropdown-menu">
+                  <li><button class="dropdown-item" onclick="sharePage('<?= $index ?>')"><i class="bi bi-share-fill"></i> share</button></li>
+                  <li><a class="dropdown-item" href="artist.php?name=<?= $songArtist ?>"><i class="bi bi-person-fill"></i> show artist</a></li>
+                  <li><a class="dropdown-item" href="album.php?album=<?= $songAlbum ?>"><i class="bi bi-disc-fill"></i> show album</a></li>
+                </ul>
+              </div>
+            </div>
+          <?php endforeach; ?>
         </div>
       </div>
     </div>
-    <br><br>
+    <br><br><br>
     <script>
       document.addEventListener('DOMContentLoaded', function () {
         const player = new Plyr('#player');
@@ -173,6 +166,23 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
           navigator.share({
             title: document.title,
             url: window.location.href
+          }).then(() => {
+            console.log('Page shared successfully.');
+          }).catch((error) => {
+            console.error('Error sharing page:', error);
+          });
+        } else {
+          console.log('Web Share API not supported.');
+        }
+      }
+    </script>
+    <script>
+      function sharePage(musicId) {
+        if (navigator.share) {
+          const shareUrl = window.location.origin + '/music.php?id=' + musicId;
+          navigator.share({
+            title: document.title,
+            url: shareUrl
           }).then(() => {
             console.log('Page shared successfully.');
           }).catch((error) => {
