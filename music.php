@@ -146,7 +146,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
         </div>
       </div>
     </div>
-    <br><br><br>
+    <div style="margin-bottom: 250px;"></div>
     <script>
       document.addEventListener('DOMContentLoaded', function () {
         const player = new Plyr('#player');

@@ -77,7 +77,7 @@ $musicCount = count($songList);
         </div>
       <?php endforeach; ?>
     </div>
-    <br><br>
+    <div style="margin-bottom: 250px;"></div>
     <script>
       // Get the search input element
       const searchInput = document.getElementById('search-input');

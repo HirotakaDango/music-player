@@ -78,7 +78,7 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
         </div>
       <?php endforeach; ?>
     </div>
-    <br><br>
+    <div style="margin-bottom: 250px;"></div>
     <script>
       function sharePage(musicId) {
         if (navigator.share) {
