@@ -133,7 +133,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                 <?= $songName ?><br>
                 <small class="text-muted"><?= $songArtist ?></small>
               </a>
-              <div class="dropdown">
+              <div class="dropdown dropdown-menu-end">
                 <button class="text-decoration-none text-white btn fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
                 <ul class="dropdown-menu">
                   <li><button class="dropdown-item" onclick="sharePage('<?= $index ?>')"><i class="bi bi-share-fill"></i> share</button></li>
