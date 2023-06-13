@@ -129,7 +129,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
               $songAlbum = !empty($fileInfo['comments_html']['album']) ? implode(', ', $fileInfo['comments_html']['album']) : 'Unknown';
             ?>
             <div class="d-flex justify-content-between align-items-center border-bottom">
-              <a class="text-decoration-none music text-start w-75 text-white btn fw-bold" href="music.php?id=<?= $index ?>">
+              <a class="text-decoration-none music text-start w-100 text-white btn fw-bold" href="music.php?id=<?= $index ?>">
                 <?= $songName ?><br>
                 <small class="text-muted"><?= $songArtist ?></small>
               </a>
