@@ -56,9 +56,8 @@ $musicCount = count($songList);
     <?php include('header.php'); ?>
     <div class="container-fluid">
       <div class="input-group mb-3 mt-3">
-        <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search song" id="search-input">
+        <input type="text" class="form-control me-2 ms-2 fw-semibold" placeholder="Search from <?php echo $musicCount; ?> songs" id="search-input">
       </div>
-      <p class="text-start fw-semibold"><?php echo $musicCount; ?> songs</p>
       <?php foreach ($songList as $song): ?>
         <div class="d-flex justify-content-between align-items-center border-bottom">
           <a class="text-decoration-none music text-start w-100 text-white btn fw-bold" href="music.php?id=<?php echo $song['index']; ?>">
