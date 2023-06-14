@@ -68,7 +68,7 @@ $musicCount = count($songList);
           <div class="dropdown dropdown-menu-end">
             <button class="text-decoration-none text-white btn fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
             <ul class="dropdown-menu">
-              <li><button class="dropdown-item fw-semibold" onclick="sharePage('<?php echo $song['index']; ?>')"><i class="bi bi-share-fill"></i> share</button></li>
+              <li><button class="dropdown-item fw-semibold" onclick="sharePage('<?php echo $song['index']; ?>', '<?php echo $song['songName']; ?>')"><i class="bi bi-share-fill"></i> share</button></li>
               <li><a class="dropdown-item fw-semibold" href="artist.php?name=<?php echo $song['artist']; ?>"><i class="bi bi-person-fill"></i> show artist</a></li>
               <li><a class="dropdown-item fw-semibold" href="album.php?album=<?php echo $song['album']; ?>"><i class="bi bi-disc-fill"></i> show album</a></li>
             </ul>
@@ -101,11 +101,11 @@ $musicCount = count($songList);
       });
     </script>
     <script>
-      function sharePage(musicId) {
+      function sharePage(musicId, songName) {
         if (navigator.share) {
           const shareUrl = window.location.origin + '/music.php?id=' + musicId;
           navigator.share({
-            title: document.title,
+            title: songName,
             url: shareUrl
           }).then(() => {
             console.log('Page shared successfully.');
