@@ -75,7 +75,7 @@ if (isset($_GET['album'])) {
             <div class="dropdown dropdown-menu-end">
               <button class="text-decoration-none text-white btn fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
               <ul class="dropdown-menu">
-                <li><button class="dropdown-item fw-semibold" onclick="sharePage('<?php echo $song['index']; ?>')"><i class="bi bi-share-fill"></i> share</button></li>
+                <li><button class="dropdown-item fw-semibold" onclick="sharePage('<?php echo $song['index']; ?>', '<?php echo $song['songName']; ?>')"><i class="bi bi-share-fill"></i> share</button></li>
                 <li><a class="dropdown-item fw-semibold" href="artist.php?name=<?php echo $song['artist']; ?>"><i class="bi bi-person-fill"></i> show artist</a></li>
               </ul>
             </div>
@@ -108,11 +108,11 @@ if (isset($_GET['album'])) {
       });
     </script>
     <script>
-      function sharePage(musicId) {
+      function sharePage(musicId, songName) {
         if (navigator.share) {
           const shareUrl = window.location.origin + '/music.php?id=' + musicId;
           navigator.share({
-            title: document.title,
+            title: songName,
             url: shareUrl
           }).then(() => {
             console.log('Page shared successfully.');

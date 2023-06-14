@@ -71,7 +71,7 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
           <div class="dropdown dropdown-menu-end">
             <button class="text-decoration-none text-white btn fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
             <ul class="dropdown-menu">
-              <li><button class="dropdown-item fw-semibold" onclick="sharePage('<?php echo $song['index']; ?>')"><i class="bi bi-share-fill"></i> share</button></li>
+              <li><button class="dropdown-item fw-semibold" onclick="sharePage('<?php echo $song['index']; ?>', '<?php echo $song['songName']; ?>')"><i class="bi bi-share-fill"></i> share</button></li>
               <li><a class="dropdown-item fw-semibold" href="album.php?album=<?php echo $song['album']; ?>"><i class="bi bi-disc-fill"></i> show album</a></li>
             </ul>
           </div>
@@ -80,11 +80,11 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
     </div>
     <div style="margin-bottom: 250px;"></div>
     <script>
-      function sharePage(musicId) {
+      function sharePage(musicId, songName) {
         if (navigator.share) {
           const shareUrl = window.location.origin + '/music.php?id=' + musicId;
           navigator.share({
-            title: document.title,
+            title: songName,
             url: shareUrl
           }).then(() => {
             console.log('Page shared successfully.');
@@ -111,7 +111,7 @@ $filteredSongs = array_filter($songList, function($song) use ($artistName) {
           console.log('Web Share API not supported.');
         }
       }
-    </script>
+    </script> 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
   </body>
 </html>
