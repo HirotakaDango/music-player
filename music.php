@@ -102,7 +102,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
               </div>
             </div>
           </div>
-          <div class="d-md-none d-lg-none mt-4">
+          <div class="d-md-none d-lg-none mt-5">
             <div class="d-flex justify-content-center btn-group">
               <a href="music.php?id=<?= $previousId ?>" class="btn float-end text-white"><i class="bi bi-skip-start-circle display-1"></i></a>
               <button class="text-decoration-none btn text-white d-md-none d-lg-none" data-bs-toggle="modal" data-bs-target="#exampleModal"><i class="bi bi-music-note-list display-1"></i></button>
