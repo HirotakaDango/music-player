@@ -104,9 +104,9 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
           </div>
           <div class="d-md-none d-lg-none mt-5">
             <div class="d-flex justify-content-center btn-group">
-              <a href="music.php?id=<?= $previousId ?>" class="btn float-end text-white"><i class="bi bi-skip-start-circle display-1"></i></a>
+              <a href="music.php?id=<?= $previousId ?>" class="btn float-end text-white"><i class="bi bi-skip-start-fill display-1"></i></a>
               <button class="text-decoration-none btn text-white d-md-none d-lg-none" data-bs-toggle="modal" data-bs-target="#exampleModal"><i class="bi bi-music-note-list display-1"></i></button>
-              <a href="music.php?id=<?= $nextId ?>" class="btn float-end text-white"><i class="bi bi-skip-end-circle display-1"></i></a>
+              <a href="music.php?id=<?= $nextId ?>" class="btn float-end text-white"><i class="bi bi-skip-end-fill display-1"></i></a>
             </div>
           </div>
           <div class="w-100 bg-dark fixed-bottom border-2 border-top">
@@ -119,8 +119,8 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
               </div>
               <div class="d-none d-md-block d-lg-block">
                 <div class="btn-group">
-                  <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
-                  <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
+                  <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-start-fill fs-3"></i></a>
+                  <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-end-fill fs-3"></i></a>
                 </div>
               </div>
             </div>
