@@ -89,8 +89,8 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                 </div>
                 <div class="modal-body">
                   <div class="metadata">
-                    <p class="fw-bold text-start">Artist: <?= $artist ?></p>
-                    <p class="fw-bold text-start">Album: <?= $album ?></p>
+                    <p class="fw-bold text-start">Artist: <a class="text-decoration-none text-white" href="artist.php?name=<?= $artist ?>"><?php echo $artist; ?></a></p>
+                    <p class="fw-bold text-start">Album: <a class="text-decoration-none text-white" href="album.php?album=<?= $album ?>"><?php echo $album; ?></a></p>
                     <p class="fw-bold text-start">Duration: <?= $duration ?></p>
                     <p class="fw-bold text-start">Bitrate: <?= $bitrate ?></p>
                     <p class="fw-bold text-start">Size: <?= $size ?></p>
