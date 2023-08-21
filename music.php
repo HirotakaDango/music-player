@@ -109,7 +109,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
               <a href="music.php?id=<?= $nextId ?>" class="btn float-end text-white"><i class="bi bi-skip-end-circle display-1"></i></a>
             </div>
           </div>
-          <div class="d-md-none d-lg-none w-100 bg-dark fixed-bottom border-2 border-top">
+          <div class="w-100 bg-dark fixed-bottom border-2 border-top">
             <div class="d-flex justify-content-between align-items-center">
               <div class="w-100">
                 <audio id="player" controls>
@@ -117,19 +117,11 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                   Your browser does not support the audio element.
                 </audio>
               </div>
-            </div>
-          </div>
-          <div class="d-none d-md-block d-lg-block w-100 bg-dark fixed-bottom border-2 border-top">
-            <div class="d-flex justify-content-between align-items-center">
-              <div class="w-100">
-                <audio id="player" controls>
-                  <source src="<?= $file ?>" type="audio/mpeg">
-                  Your browser does not support the audio element.
-                </audio>
-              </div>
-              <div class="btn-group">
-                <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
-                <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
+              <div class="d-none d-md-block d-lg-block">
+                <div class="btn-group">
+                  <a href="music.php?id=<?= $previousId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-start-circle fs-3"></i></a>
+                  <a href="music.php?id=<?= $nextId ?>" class="btn float-end fw-bold mt-1" style="color: #4A5464;"><i class="bi bi-skip-end-circle fs-3"></i></a>
+                </div>
               </div>
             </div>
           </div>
