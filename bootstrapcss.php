@@ -3,23 +3,16 @@
     <style>
       /* For Webkit-based browsers */
       ::-webkit-scrollbar {
-        width: 8px;
-        height: 10px;
+        width: 0;
+        height: 0;
         border-radius: 10px;
-        background-color: #F2F2F2;
       }
 
       ::-webkit-scrollbar-track {
-        background: #F2F2F2;
-        border-radius: 10px;
+        border-radius: 0;
       }
 
       ::-webkit-scrollbar-thumb {
-        background: #D6D6D6;
-        border-radius: 10px;
-      }
-
-      ::-webkit-scrollbar-thumb:hover {
-        background: #555;
+        border-radius: 0;
       }
     </style>

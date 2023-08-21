@@ -61,8 +61,8 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
       </div>
       <div class="row featurette mt-5">
         <div class="col-md-5 order-md-1 mb-5">
-          <h4 class="text-center fw-bold display-5"><?= $title ?></h4>
-          <p class="text-center fw-bold">
+          <h4 class="text-center fw-bold display-5" style="overflow-x: auto; white-space: nowrap;"><?= $title ?></h4>
+          <p class="text-center fw-bold" style="overflow-x: auto; white-space: nowrap;">
             <a class="text-decoration-none text-white" href="artist.php?name=<?= $artist ?>"><?php echo $artist; ?></a> -
             <a class="text-decoration-none text-white" href="album.php?album=<?= $album ?>"><?php echo $album; ?></a>
           </p>
@@ -89,14 +89,14 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                 </div>
                 <div class="modal-body">
                   <div class="metadata">
-                    <p class="fw-semibold text-start">Artist: <?= $artist ?></p>
-                    <p class="fw-semibold text-start">Album: <?= $album ?></p>
-                    <p class="fw-semibold text-start">Duration: <?= $duration ?></p>
-                    <p class="fw-semibold text-start">Bitrate: <?= $bitrate ?></p>
-                    <p class="fw-semibold text-start">Size: <?= $size ?></p>
-                    <p class="fw-semibold text-start">Audio Type: <?= $audioType ?></p>
-                    <p class="fw-semibold text-start">Image Type: <?= $imageMime ?></p>
-                    <a class="btn btn-primary fw-semibold w-100" href="<?= $file ?>" download>Download Song</a>
+                    <p class="fw-bold text-start">Artist: <?= $artist ?></p>
+                    <p class="fw-bold text-start">Album: <?= $album ?></p>
+                    <p class="fw-bold text-start">Duration: <?= $duration ?></p>
+                    <p class="fw-bold text-start">Bitrate: <?= $bitrate ?></p>
+                    <p class="fw-bold text-start">Size: <?= $size ?></p>
+                    <p class="fw-bold text-start">Audio Type: <?= $audioType ?></p>
+                    <p class="fw-bold text-start">Image Type: <?= $imageMime ?></p>
+                    <a class="btn btn-primary fw-bold w-100" href="<?= $file ?>" download>Download Song</a>
                   </div>
                 </div>
               </div>
