@@ -139,7 +139,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
             <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
               <div class="modal-content">
                 <div class="modal-header">
-                  <h1 class="modal-title fs-5" id="exampleModalLabel">Modal title</h1>
+                  <h1 class="modal-title fw-bold fs-5" id="exampleModalLabel"><i class="bi bi-music-note-list"></i> song list</h1>
                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -246,6 +246,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
         }
       }
     </script>
+    <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
     <?php include('bootstrapjs.php'); ?>
   </body>
 </html>
