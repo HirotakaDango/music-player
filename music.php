@@ -66,19 +66,25 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
             <a class="text-decoration-none text-white" href="artist.php?name=<?= $artist ?>"><?php echo $artist; ?></a> -
             <a class="text-decoration-none text-white" href="album.php?album=<?= $album ?>"><?php echo $album; ?></a>
           </p>
-          <div class="position-relative">
-            <?php if ($imageData && $imageMime): ?>
-              <div class="text-center mb-2">
-                <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
+          <div class="container-md container-lg">
+            <div class="container-md container-lg">
+              <div class="container-md container-lg">
+                <div class="position-relative">
+                  <?php if ($imageData && $imageMime): ?>
+                    <div class="text-center mb-2">
+                      <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
+                    </div>
+                  <?php else: ?>
+                    <div class="text-center mb-2">
+                      <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
+                    </div>
+                  <?php endif; ?>
+                  <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1 rounded-1" data-bs-toggle="modal" data-bs-target="#songInfo">
+                    <i class="bi bi-info-circle-fill"></i>
+                  </button>
+                </div>
               </div>
-            <?php else: ?>
-              <div class="text-center mb-2">
-                <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
-              </div>
-            <?php endif; ?>
-            <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1 rounded-1" data-bs-toggle="modal" data-bs-target="#songInfo">
-              <i class="bi bi-info-circle-fill"></i>
-            </button>
+            </div>
           </div>
           <div class="modal fade" id="songInfo" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
             <div class="modal-dialog">
@@ -163,35 +169,37 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
             </div>
           </div> 
           <div class="d-none d-md-block d-lg-block">
-            <h3 class="text-start fw-semibold"><i class="bi bi-music-note-list"></i> song list</h3>
-            <?php foreach ($musicFiles as $index => $musicFile): ?>
-              <?php
-                $fileInfo = $getID3->analyze($musicFile);
-                getid3_lib::CopyTagsToComments($fileInfo);
-                $songName = !empty($fileInfo['comments_html']['title']) ? implode(', ', $fileInfo['comments_html']['title']) : 'Unknown';
-                $songArtist = !empty($fileInfo['comments_html']['artist']) ? implode(', ', $fileInfo['comments_html']['artist']) : 'Unknown';
-                $songAlbum = !empty($fileInfo['comments_html']['album']) ? implode(', ', $fileInfo['comments_html']['album']) : 'Unknown';
-              ?>
-              <div class="d-flex justify-content-between align-items-center border-bottom">
-                <a class="text-decoration-none music text-start w-100 text-white btn fw-bold" href="music.php?id=<?= $index ?>">
-                  <?= $songName ?><br>
-                  <small class="text-muted"><?= $songArtist ?></small>
-                </a>
-                <div class="dropdown dropdown-menu-end">
-                  <button class="text-decoration-none text-white btn fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
-                  <ul class="dropdown-menu">
-                    <li><button class="dropdown-item" onclick="sharePageS('<?= $index ?>', '<?= $songName ?>')"><i class="bi bi-share-fill"></i> share</button></li>
-                    <li><a class="dropdown-item" href="artist.php?name=<?= $songArtist ?>"><i class="bi bi-person-fill"></i> show artist</a></li>
-                    <li><a class="dropdown-item" href="album.php?album=<?= $songAlbum ?>"><i class="bi bi-disc-fill"></i> show album</a></li>
-                  </ul>
+            <div class="overflow-y-auto" id="autoHeightDiv" style="max-height: 100%;">
+              <h3 class="text-start fw-semibold"><i class="bi bi-music-note-list"></i> song list</h3>
+              <?php foreach ($musicFiles as $index => $musicFile): ?>
+                <?php
+                  $fileInfo = $getID3->analyze($musicFile);
+                  getid3_lib::CopyTagsToComments($fileInfo);
+                  $songName = !empty($fileInfo['comments_html']['title']) ? implode(', ', $fileInfo['comments_html']['title']) : 'Unknown';
+                  $songArtist = !empty($fileInfo['comments_html']['artist']) ? implode(', ', $fileInfo['comments_html']['artist']) : 'Unknown';
+                  $songAlbum = !empty($fileInfo['comments_html']['album']) ? implode(', ', $fileInfo['comments_html']['album']) : 'Unknown';
+                ?>
+                <div class="d-flex justify-content-between align-items-center border-bottom">
+                  <a class="text-decoration-none music text-start w-100 text-white btn fw-bold" href="music.php?id=<?= $index ?>">
+                    <?= $songName ?><br>
+                    <small class="text-muted"><?= $songArtist ?></small>
+                  </a>
+                  <div class="dropdown dropdown-menu-end">
+                    <button class="text-decoration-none text-white btn fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
+                    <ul class="dropdown-menu">
+                      <li><button class="dropdown-item" onclick="sharePageS('<?= $index ?>', '<?= $songName ?>')"><i class="bi bi-share-fill"></i> share</button></li>
+                      <li><a class="dropdown-item" href="artist.php?name=<?= $songArtist ?>"><i class="bi bi-person-fill"></i> show artist</a></li>
+                      <li><a class="dropdown-item" href="album.php?album=<?= $songAlbum ?>"><i class="bi bi-disc-fill"></i> show album</a></li>
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            <?php endforeach; ?>
+              <?php endforeach; ?>
+              <br><br><br><br><br>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <div class="d-none d-md-block d-lg-block" style="margin-bottom: 250px;"></div>
     <script>
       document.addEventListener('DOMContentLoaded', function () {
         const player = new Plyr('#player');
@@ -203,6 +211,18 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
           // Redirect to the next song URL
           window.location.href = 'music.php?id=<?= $nextId ?>';
         });
+      });
+    </script>
+    <script>
+      // Get a reference to the element
+      const autoHeightDiv = document.getElementById('autoHeightDiv');
+    
+      // Set the element's height to match the screen's height
+      autoHeightDiv.style.height = window.innerHeight + 'px';
+    
+      // Listen for window resize events to update the height dynamically
+      window.addEventListener('resize', () => {
+        autoHeightDiv.style.height = window.innerHeight + 'px';
       });
     </script>
     <script>
