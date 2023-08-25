@@ -66,7 +66,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
             <a class="text-decoration-none text-white" href="artist.php?name=<?= $artist ?>"><?php echo $artist; ?></a> -
             <a class="text-decoration-none text-white" href="album.php?album=<?= $album ?>"><?php echo $album; ?></a>
           </p>
-          <div class="container-md container-lg">
+          <div class="container-md container-LG d-none d-md-block d-lg-block">
             <div class="container-md container-lg">
               <div class="container-md container-lg">
                 <div class="position-relative">
@@ -85,6 +85,20 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                 </div>
               </div>
             </div>
+          </div>
+          <div class="position-relative d-md-none d-lg-none">
+            <?php if ($imageData && $imageMime): ?>
+              <div class="text-center mb-2">
+                <img src="data:<?= $imageMime ?>;base64,<?= base64_encode($imageData) ?>" alt="Song Image" class="img-fluid rounded shadow">
+              </div>
+            <?php else: ?>
+              <div class="text-center mb-2">
+                <img src="icon/bg.png" alt="Placeholder Image" class="img-fluid rounded shadow">
+              </div>
+            <?php endif; ?>
+            <button type="button" class="btn btn-dark opacity-50 position-absolute top-0 start-0 mt-1 ms-1 rounded-1" data-bs-toggle="modal" data-bs-target="#songInfo">
+              <i class="bi bi-info-circle-fill"></i>
+            </button>
           </div>
           <div class="modal fade" id="songInfo" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
             <div class="modal-dialog">
