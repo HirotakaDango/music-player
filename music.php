@@ -122,15 +122,15 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
               </div>
             </div>
           </div>
-          <div class="d-md-none d-lg-none mt-5">
-            <div class="d-flex justify-content-center btn-group">
-              <a href="music.php?id=<?= $previousId ?>" class="btn float-end text-white"><i class="bi bi-skip-start-fill display-1"></i></a>
-              <button class="text-decoration-none btn text-white d-md-none d-lg-none" data-bs-toggle="modal" data-bs-target="#exampleModal"><i class="bi bi-music-note-list display-1"></i></button>
-              <a href="music.php?id=<?= $nextId ?>" class="btn float-end text-white"><i class="bi bi-skip-end-fill display-1"></i></a>
-            </div>
-          </div>
-          <div class="w-100 bg-dark fixed-bottom border-2 border-top">
-            <div class="d-flex justify-content-between align-items-center">
+          <div class="w-100 bg-dark fixed-bottom">
+            <div class="d-md-none d-lg-none mb-5">
+              <div class="d-flex justify-content-center btn-group">
+                <a href="music.php?id=<?= $previousId ?>" class="btn float-end text-white"><i class="bi bi-skip-start-fill display-1"></i></a>
+                <button class="text-decoration-none btn text-white d-md-none d-lg-none" data-bs-toggle="modal" data-bs-target="#exampleModal"><i class="bi bi-music-note-list display-1"></i></button>
+                <a href="music.php?id=<?= $nextId ?>" class="btn float-end text-white"><i class="bi bi-skip-end-fill display-1"></i></a>
+              </div>
+            </div> 
+            <div class="d-flex justify-content-between align-items-center border-2 border-top">
               <div class="w-100">
                 <audio id="player" controls>
                   <source src="<?= $file ?>" type="audio/mpeg">
@@ -148,7 +148,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
         </div>
         <div class="col-md-7 order-md-2">
           <div class="modal fade d-md-none d-lg-none" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-dialog modal-dialog-centered modal-fullscreen modal-dialog-scrollable">
               <div class="modal-content">
                 <div class="modal-header">
                   <h1 class="modal-title fw-bold fs-5" id="exampleModalLabel"><i class="bi bi-music-note-list"></i> song list</h1>
