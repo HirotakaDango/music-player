@@ -11,9 +11,9 @@ if (isset($musicFiles[$id])) {
   $fileInfo = $getID3->analyze($file);
   getid3_lib::CopyTagsToComments($fileInfo);
 
-  $title = !empty($fileInfo['comments_html']['title']) ? implode(', ', $fileInfo['comments_html']['title']) : 'Unknown';
-  $artist = !empty($fileInfo['comments_html']['artist']) ? implode(', ', $fileInfo['comments_html']['artist']) : 'Unknown';
-  $album = !empty($fileInfo['comments_html']['album']) ? implode(', ', $fileInfo['comments_html']['album']) : 'Unknown';
+$title = !empty($fileInfo['comments_html']['title']) ? mb_convert_encoding(implode(', ', $fileInfo['comments_html']['title']), 'UTF-8', 'auto') : 'Unknown';
+$artist = !empty($fileInfo['comments_html']['artist']) ? mb_convert_encoding(implode(', ', $fileInfo['comments_html']['artist']), 'UTF-8', 'auto') : 'Unknown';
+$album = !empty($fileInfo['comments_html']['album']) ? mb_convert_encoding(implode(', ', $fileInfo['comments_html']['album']), 'UTF-8', 'auto') : 'Unknown';
   $duration = !empty($fileInfo['playtime_string']) ? $fileInfo['playtime_string'] : 'Unknown';
 
   $imageData = !empty($fileInfo['comments']['picture'][0]['data']) ? $fileInfo['comments']['picture'][0]['data'] : null;
@@ -48,6 +48,22 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
     <?php include('bootstrapcss.php'); ?>
     <link rel="stylesheet" href="plyr.css">
     <title><?= $title ?></title>
+    <script>
+      const player = document.getElementById('player');
+      let currentTrackId = <?= $id ?>;
+
+      navigator.mediaSession.setActionHandler('previoustrack', function() {
+        currentTrackId = currentTrackId > 0 ? currentTrackId - 1 : <?= count($musicFiles) - 1 ?>;
+        const previousTrackUrl = 'music.php?id=' + currentTrackId;
+        window.location.href = previousTrackUrl;
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', function() {
+        currentTrackId = currentTrackId < <?= count($musicFiles) - 1 ?> ? currentTrackId + 1 : 0;
+        const nextTrackUrl = 'music.php?id=' + currentTrackId;
+        window.location.href = nextTrackUrl;
+      });
+    </script>
   </head>
   <body>
     <div class="container-fluid">
