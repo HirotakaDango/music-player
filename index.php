@@ -89,8 +89,6 @@ $musicCount = count($songList);
           <div class="dropdown dropdown-menu-end">
             <button class="text-decoration-none text-white btn fw-bold border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
             <ul class="dropdown-menu rounded-4">
-              <li><a class="dropdown-item fw-medium" href="artist.php?name=<?php echo $song['artist']; ?>"><i class="bi bi-person-fill"></i> show artist</a></li>
-              <li><a class="dropdown-item fw-medium" href="album.php?album=<?php echo $song['album']; ?>"><i class="bi bi-disc-fill"></i> show album</a></li>
               <li><a class="dropdown-item fw-medium" href="<?php echo $song['file']; ?>" download><i class="bi bi-cloud-arrow-down-fill"></i> download</a></li>
             </ul>
           </div>
