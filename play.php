@@ -250,7 +250,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                   <span class="ms-auto small" id="duration-left"></span>
                 </div>
                 <audio id="player" class="d-none" controls>
-                  <source src="<?php echo htmlspecialchars($currentSong['file']); ?>" type="audio/mpeg">
+                  <source src="<?php echo $currentSong['file']; ?>" type="audio/mpeg">
                   Your browser does not support the audio element.
                 </audio>
               </div>
@@ -319,7 +319,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                 <p class="form-control-plaintext fw-bold text-white" id="audioType"><?= $audioType ?></p>
               </div>
             </div>
-            <a class="btn btn-primary fw-bold w-100" href="<?php echo $row['file']; ?>" download>Download Song</a> 
+            <a class="btn btn-primary fw-bold w-100" href="<?php echo $currentSong['file']; ?>" download>Download Song</a> 
           </div>
         </div>
       </div>
