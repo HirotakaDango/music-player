@@ -122,7 +122,7 @@ $songsToShow = array_slice($songList, $offset, $itemsPerPage);
         </a>
 
         <ul class="nav nav-pills">
-          <li class="nav-item"><a href="/" class="nav-link text-white fw-semibold <?php if(basename($_SERVER['PHP_SELF']) == 'index.php' && empty($_GET)) echo 'active' ?>"><i class="bi bi-house-fill"></i> Home</a></li>
+          <li class="nav-item"><a href="/" class="nav-link text-white fw-semibold <?php if(basename($_SERVER['PHP_SELF']) == 'index.php' && (!isset($_GET['artist']) && !isset($_GET['album']) && !isset($_GET['artists']) && !isset($_GET['albums']))) echo 'active' ?>"><i class="bi bi-house-fill"></i> Home</a></li>
           <li class="nav-item"><a href="?artists=all&page=<?php echo isset($_GET['page']) ? $_GET['page'] : 1; ?>" class="nav-link text-white fw-semibold <?php if(isset($_GET['artists']) && $_GET['artists'] === 'all') echo 'active' ?>"><i class="bi bi-people-fill"></i> Artists</a></li>
           <li class="nav-item"><a href="?albums=all&page=<?php echo isset($_GET['page']) ? $_GET['page'] : 1; ?>" class="nav-link text-white fw-semibold <?php if(isset($_GET['albums']) && $_GET['albums'] === 'all') echo 'active' ?>"><i class="bi bi-disc-fill"></i> Albums</a></li>
         </ul>

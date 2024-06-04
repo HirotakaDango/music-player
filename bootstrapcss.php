@@ -17,4 +17,8 @@
       ::-webkit-scrollbar-thumb {
         border-radius: 0;
       }
+      
+      .text-stroke {
+        -webkit-text-stroke: 1px;
+      }
     </style>
