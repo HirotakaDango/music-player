@@ -4,6 +4,7 @@ $musicDir = 'music/';
 $artist = isset($_GET['artist']) ? $_GET['artist'] : null;
 $album = isset($_GET['album']) ? $_GET['album'] : null;
 $title = isset($_GET['title']) ? $_GET['title'] : null;
+$page = isset($_GET['page']) ? $_GET['page'] : null;
 $musicFiles = glob($musicDir . '*.mp3');
 
 $getID3 = new getID3();
@@ -90,8 +91,8 @@ if ($currentSong) {
   $previousSong = $songList[$previousIndex];
   $nextSong = $songList[$nextIndex];
 
-  $previousUrl = "play.php?artist=" . urlencode($previousSong['artist']) . "&album=" . urlencode($previousSong['album']) . "&title=" . urlencode($previousSong['songName']);
-  $nextUrl = "play.php?artist=" . urlencode($nextSong['artist']) . "&album=" . urlencode($nextSong['album']) . "&title=" . urlencode($nextSong['songName']);
+  $previousUrl = "play.php?artist=" . urlencode($previousSong['artist']) . "&album=" . urlencode($previousSong['album']) . "&title=" . urlencode($previousSong['songName']) . '&page=' . $page;
+  $nextUrl = "play.php?artist=" . urlencode($nextSong['artist']) . "&album=" . urlencode($nextSong['album']) . "&title=" . urlencode($nextSong['songName']) . '&page=' . $page;
 } else {
   echo '<p>Song not found.</p>';
   exit();
@@ -118,6 +119,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <?php include('bootstrapcss.php'); ?>
     <title><?php echo $title; ?></title>
+    <link rel="icon" type="image/png" href="data:<?php echo $imageMime; ?>;base64,<?php echo base64_encode($imageData); ?>">
     <meta property="og:image" content="data:<?php echo $imageMime; ?>;base64,<?php echo base64_encode($imageData); ?>"/>
     <meta property="og:title" content="<?php echo $title; ?>"/>
     <meta property="og:description" content="<?php echo $album; ?>"/>
@@ -224,7 +226,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
   </head>
   <body>
     <div class="container-fluid">
-      <a class="m-1 p-3 position-absolute start-0 top-0 btn border-0 link-body-emphasis text-shadow" href="/"><i class="bi bi-chevron-down fs-4 text-stroke"></i></a>
+      <a class="m-1 p-3 position-absolute start-0 top-0 btn border-0 link-body-emphasis text-shadow" href="/?page=<?php echo $page; ?>"><i class="bi bi-chevron-down fs-4 text-stroke"></i></a>
       <a class="m-1 p-3 position-absolute end-0 top-0 btn border-0 link-body-emphasis text-shadow d-md-none" href="#" data-bs-toggle="modal" data-bs-target="#shareLink"><i class="bi bi-share-fill fs-4"></i></a>
       <div class="container">
         <div class="d-flex justify-content-center align-items-center custom-bg vh-100">
@@ -240,7 +242,7 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
                   <i class="bi bi-info-circle-fill"></i>
                 </button>
                 <h2 class="text-start text-white fw-bold" style="overflow-x: auto; white-space: nowrap;"><?php echo $title; ?></h2>
-                <h6 class="text-start text-white fw-bold mb-4 overflow-auto text-nowrap"><?php echo $artist; ?> - <?php echo $album; ?></h6>
+                <h6 class="text-start text-white fw-bold mb-4 overflow-auto text-nowrap"><a class="text-decoration-none text-white" href="/?artist=<?php echo $artist; ?>"><?php echo $artist; ?></a> - <a class="text-decoration-none text-white" href="/?album=<?php echo $album; ?>"><?php echo $album; ?></a></h6>
                 </div>
               </div>
               <div id="music-player" class="w-100 mb-3 mt-4">
@@ -286,13 +288,13 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
             <div class="mb-2 row">
               <label for="artist" class="col-4 col-form-label text-nowrap fw-medium">Artist</label>
               <div class="col-8">
-                <p class="form-control-plaintext fw-bold" id="artist"><?php echo $artist; ?></p>
+                <p class="form-control-plaintext fw-bold text-white" id="artist"><a class="text-decoration-none text-white" href="/?artist=<?php echo $artist; ?>"><?php echo $artist; ?></a></p>
               </div>
             </div>
             <div class="mb-2 row">
               <label for="album" class="col-4 col-form-label text-nowrap fw-medium">Album</label>
               <div class="col-8">
-                <p class="form-control-plaintext fw-bold" id="album"><?php echo $album; ?></p>
+                <p class="form-control-plaintext fw-bold text-white" id="album"><a class="text-decoration-none text-white" href="/?album=<?php echo $album; ?>"><?php echo $album; ?></a></p>
               </div>
             </div>
             <div class="mb-2 row">
