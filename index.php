@@ -164,7 +164,7 @@ $songsToShow = array_slice($songList, $offset, $itemsPerPage);
               <button class="text-decoration-none text-white btn fw-bold border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-three-dots-vertical"></i></button>
               <ul class="dropdown-menu rounded-4">
                 <li><a class="dropdown-item fw-medium" href="?artist=<?php echo urlencode($song['artist']); ?>"><i class="bi bi-person-fill"></i> show artist</a></li>
-                <li><a class="dropdown-item fw-medium" href="?albun=<?php echo urlencode($song['album']); ?>"><i class="bi bi-cloud-arrow-down-fill"></i> show album</a></li>
+                <li><a class="dropdown-item fw-medium" href="?album=<?php echo urlencode($song['album']); ?>"><i class="bi bi-cloud-arrow-down-fill"></i> show album</a></li>
                 <li><a class="dropdown-item fw-medium" href="<?php echo $song['file']; ?>" download><i class="bi bi-disc-fill"></i> download</a></li>
               </ul>
             </div>
