@@ -49,7 +49,7 @@ foreach ($musicFiles as $index => $file) {
 if (isset($_GET['q'])) {
   $searchQuery = strtolower($_GET['q']);
   $songList = array_filter($songList, function($song) use ($searchQuery) {
-    return strpos(strtolower($song['artist']), $searchQuery) !== false || strpos(strtolower($song['album']), $searchQuery) !== false;
+    return strpos(strtolower($song['artist']), $searchQuery) !== false || strpos(strtolower($song['album']), $searchQuery) !== false || strpos(strtolower($song['songName']), $searchQuery) !== false;
   });
 }
 
@@ -140,8 +140,8 @@ $songsToShow = array_slice($songList, $offset, $itemsPerPage);
             <li class="nav-item">
               <a class="nav-link <?php if(isset($_GET['albums']) && $_GET['albums'] === 'all') echo 'active' ?>" href="#">Albums</a>
             </li>
-            <form class="input-group mt-3" role="search" action="/" name="q">
-              <input class="form-control bg-dark-subtle border-0 focus-ring focus-ring-dark rounded-start-5" type="search" placeholder="Search" aria-label="Search" value="<?php echo isset($_GET['q']) ? $_GET['q'] : ''; ?>">
+            <form class="input-group mt-3" role="search" action="index.php">
+              <input class="form-control bg-dark-subtle border-0 focus-ring focus-ring-dark rounded-start-5" type="search" placeholder="Search" name="q" aria-label="Search" value="<?php echo isset($_GET['q']) ? $_GET['q'] : ''; ?>">
               <button class="btn bg-dark-subtle rounded-end-5" type="submit"><i class="bi bi-search"></i></button>
             </form>
           </ul>
@@ -151,8 +151,8 @@ $songsToShow = array_slice($songList, $offset, $itemsPerPage);
     <div class="container-fluid">
       <div class="row g-3">
         <div class="col-md-3 d-none d-md-block">
-          <form class="input-group mt-5 pt-4" role="search" action="/" name="q">
-            <input class="form-control bg-dark-subtle border-0 focus-ring focus-ring-dark rounded-start-5" type="search" placeholder="Search" aria-label="Search" value="<?php echo isset($_GET['q']) ? $_GET['q'] : ''; ?>">
+          <form class="input-group mt-5 pt-4" role="search" action="index.php">
+            <input class="form-control bg-dark-subtle border-0 focus-ring focus-ring-dark rounded-start-5" type="search" placeholder="Search" name="q" aria-label="Search" value="<?php echo isset($_GET['q']) ? $_GET['q'] : ''; ?>">
             <button class="btn bg-dark-subtle rounded-end-5" type="submit"><i class="bi bi-search"></i></button>
           </form>
           <div class="btn-group-vertical gap-2 w-100 mt-2">
