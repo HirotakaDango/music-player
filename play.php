@@ -226,8 +226,8 @@ $audioType = !empty($fileInfo['fileformat']) ? $fileInfo['fileformat'] : 'Unknow
   </head>
   <body>
     <div class="container-fluid">
-      <a class="m-1 p-3 position-absolute start-0 top-0 btn border-0 link-body-emphasis text-shadow" href="/?page=<?php echo $page; ?>"><i class="bi bi-chevron-down fs-4 text-stroke"></i></a>
-      <a class="m-1 p-3 position-absolute end-0 top-0 btn border-0 link-body-emphasis text-shadow d-md-none" href="#" data-bs-toggle="modal" data-bs-target="#shareLink"><i class="bi bi-share-fill fs-4"></i></a>
+      <a class="m-1 p-3 position-absolute start-0 top-0 btn border-0 link-body-emphasis text-shadow" href="redirect.php?back=<?php echo urlencode(isset($_GET['back']) ? $_GET['back'] : (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/'); ?>"><i class="bi bi-chevron-down fs-4 text-stroke"></i></a>
+      <a class="m-1 p-3 position-absolute end-0 top-0 btn border-0 link-body-emphasis text-shadow" href="#" data-bs-toggle="modal" data-bs-target="#shareLink"><i class="bi bi-share-fill fs-4"></i></a>
       <div class="container">
         <div class="d-flex justify-content-center align-items-center custom-bg vh-100">
           <div class="container p-4 bg-transparent rounded-5 w-100" style="max-width: 325px;">
