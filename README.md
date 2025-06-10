@@ -2,7 +2,8 @@
 
 A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, organize favorites, and install as a mobile/desktop app.
 
-![screenshot](https://github.com/user-attachments/assets/ab261136-c770-4943-aa42-f9b189eae7cc)
+![screenshot 1](https://github.com/user-attachments/assets/95573c62-7bf9-4ea5-9bf2-0fbea11a427c)
+![screenshot 2](https://github.com/user-attachments/assets/ccb66c16-0679-49dc-ac34-1ea0513e98d5)
 
 ## Features
 
