@@ -242,7 +242,13 @@ if (isset($_GET['action'])) {
         'year_desc' => 'ORDER BY year DESC, album ASC, title ASC',
         'year_asc' => 'ORDER BY year ASC, album ASC, title ASC'
       ];
-      $order_by = $sort_map[$sort] ?? $sort_map[$default_sort];
+
+      // For search, always use a fixed sort order, ignoring what client sends.
+      if ($view_type === 'search') {
+          $order_by = $sort_map['artist_asc'];
+      } else {
+          $order_by = $sort_map[$sort] ?? $sort_map[$default_sort];
+      }
 
       $stmt = $db->prepare($sql . $conditions . " " . $order_by);
       $stmt->execute($params);
@@ -283,7 +289,9 @@ if (isset($_GET['action'])) {
 
     case 'search':
       $query = '%' . ($_GET['q'] ?? '') . '%';
-      $stmt = $db->prepare("SELECT id, title, artist, album, duration FROM music WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? " . $limit_clause);
+      // Always use a fixed, predictable sort order for search to ensure it is reliable.
+      $order_by = 'ORDER BY artist ASC, album ASC, title ASC';
+      $stmt = $db->prepare("SELECT id, title, artist, album, duration FROM music WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? " . $order_by . " " . $limit_clause);
       $stmt->execute([$query, $query, $query]);
       echo json_encode($stmt->fetchAll());
       break;
@@ -514,17 +522,18 @@ function scan_music_directory($db) {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 1rem;
       }
       .header-controls {
         display: flex;
         gap: 1rem;
         align-items: center;
+        margin-left: auto;
       }
       #sort-controls {
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        margin-left: auto;
       }
       #sort-select {
         background-color: var(--ytm-surface-2);
@@ -533,27 +542,38 @@ function scan_music_directory($db) {
         border-radius: 4px;
         padding: 0.25rem 0.5rem;
       }
-      .search-input-wrapper {
-        position: relative;
+      .search-bar.input-group {
+        width: auto;
+        min-width: 250px;
       }
-      .search-input-wrapper input {
+      .search-bar.input-group .form-control {
         background-color: var(--ytm-surface-2);
         border: 1px solid #404040;
-        border-radius: 50px;
+        border-right: none;
         color: var(--ytm-primary-text);
-        padding: 0.5rem 1rem 0.5rem 2.5rem;
-        width: 100%;
+        border-radius: 50px 0 0 50px;
         height: 40px;
+        box-shadow: none;
+        padding-left: 1rem;
       }
-      .search-input-wrapper input::placeholder {
+      .search-bar.input-group .form-control:focus {
+        border-color: #666;
+        background-color: var(--ytm-surface-2);
+        color: var(--ytm-primary-text);
+      }
+      .search-bar.input-group .form-control::placeholder {
         color: var(--ytm-secondary-text);
       }
-      .search-input-wrapper .bi-search {
-        position: absolute;
-        left: 1rem;
-        top: 50%;
-        transform: translateY(-50%);
+      .search-bar.input-group .btn {
+        background-color: var(--ytm-surface-2);
+        border: 1px solid #404040;
         color: var(--ytm-secondary-text);
+        border-radius: 0 50px 50px 0;
+        z-index: 5;
+      }
+      .search-bar.input-group .btn:hover {
+        background-color: #383838;
+        color: var(--ytm-primary-text);
       }
       .content-title {
         font-size: 2rem;
@@ -817,17 +837,17 @@ function scan_music_directory($db) {
         }
         .page-header {
           padding: 1rem 1rem 0 1rem;
-          display: flex;
           flex-wrap: wrap;
-        }
-        #sort-controls {
-          margin-left: 0;
-          margin-top: 0.5rem;
-          width: 100%;
-          justify-content: flex-end;
         }
         .content-title {
           font-size: 1.75rem;
+          margin-bottom: 0.5rem;
+          width: 100%;
+        }
+        .header-controls {
+          margin-left: 0;
+          width: 100%;
+          justify-content: flex-end;
         }
         .player-bar {
           grid-template-columns: 1fr;
@@ -956,19 +976,17 @@ function scan_music_directory($db) {
           <button class="header-btn" type="button" data-bs-toggle="offcanvas" data-bs-target="#main-nav-offcanvas" aria-controls="main-nav-offcanvas">
             <i class="bi bi-list"></i>
           </button>
-          <div class="search-input-wrapper flex-grow-1">
-            <i class="bi bi-search"></i>
-            <input type="text" class="form-control" id="search-input-mobile" placeholder="Search your music">
+          <div class="input-group search-bar flex-grow-1">
+            <input type="text" class="form-control" id="search-input-mobile" placeholder="Search your music" aria-label="Search your music">
+            <button class="btn" type="button" id="search-btn-mobile"><i class="bi bi-search"></i></button>
           </div>
         </div>
         <div class="page-header">
           <h1 id="content-title" class="content-title">Home</h1>
-          <div class="header-controls d-none d-md-flex">
-            <div class="search-bar">
-              <div class="search-input-wrapper">
-                <i class="bi bi-search"></i>
-                <input type="text" class="form-control" id="search-input-desktop" placeholder="Search songs, albums, artists">
-              </div>
+          <div class="header-controls">
+            <div class="input-group search-bar d-none d-md-flex">
+              <input type="text" class="form-control" id="search-input-desktop" placeholder="Search songs, albums, artists" aria-label="Search songs, albums, artists">
+              <button class="btn" type="button" id="search-btn-desktop"><i class="bi bi-search"></i></button>
             </div>
             <div id="sort-controls" class="d-none">
               <label for="sort-select" class="text-secondary small">Sort by</label>
@@ -1033,6 +1051,8 @@ function scan_music_directory($db) {
         const contentTitle = document.getElementById('content-title');
         const searchInputDesktop = document.getElementById('search-input-desktop');
         const searchInputMobile = document.getElementById('search-input-mobile');
+        const searchBtnDesktop = document.getElementById('search-btn-desktop');
+        const searchBtnMobile = document.getElementById('search-btn-mobile');
         const sortControls = document.getElementById('sort-controls');
         const sortSelect = document.getElementById('sort-select');
         const navLinks = document.querySelectorAll('.nav-link');
@@ -1227,17 +1247,15 @@ function scan_music_directory($db) {
         
         const setupSortOptions = (viewType) => {
           sortControls.classList.add('d-none');
-          let options = {};
+          // Search view should NOT have sort options
           if (['songs', 'favorites', 'artist_songs'].includes(viewType)) {
-            options = {
+            let options = {
               'artist_asc': 'Artist', 'title_asc': 'Title', 'album_asc': 'Album',
               'year_desc': 'Year (Newest)', 'year_asc': 'Year (Oldest)',
             };
-          }
-          if (viewType === 'artist_songs') {
-             delete options.artist_asc;
-          }
-          if (Object.keys(options).length > 0) {
+            if (viewType === 'artist_songs') {
+              delete options.artist_asc;
+            }
             sortSelect.innerHTML = Object.entries(options)
               .map(([value, text]) => `<option value="${value}" ${currentView.sort === value ? 'selected' : ''}>${text}</option>`).join('');
             sortControls.classList.remove('d-none');
@@ -1266,6 +1284,7 @@ function scan_music_directory($db) {
               url = `?action=get_by_artist&name=${encodeURIComponent(param)}&sort=${sort}&page=${currentPage}`;
               break;
             case 'search':
+              // Search has no sort parameter. It's fixed.
               url = `?action=search&q=${encodeURIComponent(param)}&page=${currentPage}`;
               break;
             default:
@@ -1285,21 +1304,21 @@ function scan_music_directory($db) {
           infiniteScrollLoader.classList.add('d-none');
         };
 
-        const loadView = async (view, param = '', sort = 'artist_asc') => {
+        const loadView = async (viewConfig) => {
           mainContent.scrollTop = 0;
           currentPage = 1;
           allSongsLoaded = false;
           isLoadingMore = false;
           showLoader();
-          
-          currentView = { type: view, param, sort };
-          setupSortOptions(view);
+
+          currentView = viewConfig;
+          setupSortOptions(currentView.type);
 
           let url, data, options = {};
-          switch (view) {
+          switch (currentView.type) {
             case 'songs':
               updateContentTitle('All Songs');
-              url = `?action=get_songs&sort=${sort}&page=1`;
+              url = `?action=get_songs&sort=${currentView.sort}&page=1`;
               data = await fetchData(url);
               break;
             case 'favorites':
@@ -1321,26 +1340,25 @@ function scan_music_directory($db) {
               data = await fetchData(`?action=get_artists`);
               break;
             case 'artist_songs':
-              updateContentTitle(param);
-              url = `?action=get_by_artist&name=${encodeURIComponent(param)}&sort=${sort}&page=1`;
+              updateContentTitle(currentView.param);
+              url = `?action=get_by_artist&name=${encodeURIComponent(currentView.param)}&sort=${currentView.sort}&page=1`;
               data = await fetchData(url);
               break;
             case 'album_songs':
-              updateContentTitle(param);
-              data = await fetchData(`?action=get_by_album&name=${encodeURIComponent(param)}&page=1`);
+              updateContentTitle(currentView.param);
+              data = await fetchData(`?action=get_by_album&name=${encodeURIComponent(currentView.param)}&page=1`);
               break;
             case 'search':
-              sortControls.classList.add('d-none');
-              updateContentTitle(`Search: "${param}"`);
-              url = `?action=search&q=${encodeURIComponent(param)}&page=1`;
+              updateContentTitle(`Search: "${currentView.param}"`);
+              url = `?action=search&q=${encodeURIComponent(currentView.param)}&page=1`;
               data = await fetchData(url);
               break;
           }
 
-          if (['songs', 'artist_songs', 'album_songs', 'search', 'favorites'].includes(view)) {
+          if (['songs', 'artist_songs', 'album_songs', 'search', 'favorites'].includes(currentView.type)) {
              renderSongs(data, false);
-          } else if (['albums', 'artists'].includes(view)) {
-             contentArea.innerHTML = renderGrid(data, view);
+          } else if (['albums', 'artists'].includes(currentView.type)) {
+             contentArea.innerHTML = renderGrid(data, currentView.type);
           }
         };
 
@@ -1482,12 +1500,16 @@ function scan_music_directory($db) {
         };
 
         const setQueueAndPlay = async (startId) => {
-          const { type, param, sort } = currentView;
-          const body = { view_type: type, param, sort, ids: type === 'favorites' ? favorites : [] };
+          // Use the current view state to fetch the correct list of IDs for the queue
           const allIds = await fetchData('?action=get_view_ids', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify({
+              view_type: currentView.type,
+              param: currentView.param,
+              sort: currentView.sort,
+              ids: currentView.type === 'favorites' ? favorites : []
+            })
           });
 
           if (!allIds || allIds.length === 0) {
@@ -1509,7 +1531,7 @@ function scan_music_directory($db) {
           if (['scan-btn', 'import-btn', 'export-btn', 'install-pwa-btn'].includes(targetId)) return;
           navLinks.forEach(l => l.classList.remove('active'));
           e.currentTarget.classList.add('active');
-          loadView(e.currentTarget.dataset.view);
+          loadView({ type: e.currentTarget.dataset.view, param: '', sort: 'artist_asc' });
           const offcanvasEl = document.getElementById('main-nav-offcanvas');
           if (window.innerWidth < 768 && offcanvasEl) {
             const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
@@ -1517,16 +1539,23 @@ function scan_music_directory($db) {
           }
         }));
 
-        [searchInputDesktop, searchInputMobile].forEach(input => {
-          input.addEventListener('keyup', e => {
-            if (e.key === 'Enter' && e.target.value.trim() !== '') {
-              loadView('search', e.target.value.trim());
+        const performSearch = (query) => {
+            if (query.trim() !== '') {
+                loadView({ type: 'search', param: query.trim() });
             }
-          });
+        };
+
+        searchInputDesktop.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') performSearch(e.target.value);
         });
+        searchInputMobile.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') performSearch(e.target.value);
+        });
+        searchBtnDesktop.addEventListener('click', () => performSearch(searchInputDesktop.value));
+        searchBtnMobile.addEventListener('click', () => performSearch(searchInputMobile.value));
 
         sortSelect.addEventListener('change', (e) => {
-          loadView(currentView.type, currentView.param, e.target.value);
+          loadView({ type: currentView.type, param: currentView.param, sort: e.target.value });
         });
 
         scanBtn.addEventListener('click', e => {
@@ -1543,7 +1572,7 @@ function scan_music_directory($db) {
               scanBtn.classList.remove('scanning');
               scanProgressBar.classList.add('d-none');
               scanStatusText.textContent = data.message;
-              setTimeout(() => loadView('songs'), 1000);
+              setTimeout(() => loadView({ type: 'songs', param: '', sort: 'artist_asc' }), 1000);
             }
             if (data) scanStatusText.textContent = data.message;
           }, 2000);
@@ -1571,13 +1600,13 @@ function scan_music_directory($db) {
           const songArtistEl = target.closest('.song-artist');
           if (songArtistEl) {
             e.stopPropagation();
-            loadView('artist_songs', decodeURIComponent(songArtistEl.dataset.artist));
+            loadView({ type: 'artist_songs', param: decodeURIComponent(songArtistEl.dataset.artist), sort: 'album_asc' });
             return;
           }
           const songAlbumEl = target.closest('.song-album');
           if (songAlbumEl) {
             e.stopPropagation();
-            loadView('album_songs', decodeURIComponent(songAlbumEl.dataset.album));
+            loadView({ type: 'album_songs', param: decodeURIComponent(songAlbumEl.dataset.album) });
             return;
           }
           const songItem = target.closest('.song-item');
@@ -1585,9 +1614,9 @@ function scan_music_directory($db) {
             const songId = parseInt(songItem.dataset.songId);
             setQueueAndPlay(songId);
           } else if (target.closest('[data-artist]')) {
-            loadView('artist_songs', decodeURIComponent(target.closest('[data-artist]').dataset.artist));
+            loadView({ type: 'artist_songs', param: decodeURIComponent(target.closest('[data-artist]').dataset.artist), sort: 'album_asc' });
           } else if (target.closest('[data-album]')) {
-            loadView('album_songs', decodeURIComponent(target.closest('[data-album]').dataset.album));
+            loadView({ type: 'album_songs', param: decodeURIComponent(target.closest('[data-album]').dataset.album) });
           }
         });
         
@@ -1600,8 +1629,8 @@ function scan_music_directory($db) {
           if (!item) return;
           const { action, name, id } = item.dataset;
           const decodedName = name ? decodeURIComponent(name) : '';
-          if (action === 'go_artist') loadView('artist_songs', decodedName);
-          else if (action === 'go_album') loadView('album_songs', decodedName);
+          if (action === 'go_artist') loadView({ type: 'artist_songs', param: decodedName, sort: 'album_asc' });
+          else if (action === 'go_album') loadView({ type: 'album_songs', param: decodedName });
           else if (action === 'toggle_favorite') toggleFavorite(parseInt(id));
           contextMenu.style.display = 'none';
         });
@@ -1655,7 +1684,7 @@ function scan_music_directory($db) {
                 favorites = importedFavorites;
                 saveFavorites();
                 alert('Favorites imported successfully!');
-                loadView(currentView.type, currentView.param, currentView.sort);
+                loadView(currentView);
               } else {
                 alert('Invalid favorites file format.');
               }
@@ -1702,7 +1731,7 @@ function scan_music_directory($db) {
           updatePlayPauseIcons();
           updateRepeatIcons();
           updateShuffleButtons();
-          loadView('songs');
+          loadView({ type: 'songs', param: '', sort: 'artist_asc' });
         };
 
         init();
