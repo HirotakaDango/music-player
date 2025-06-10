@@ -1027,7 +1027,7 @@ function scan_music_directory($db) {
           </div>
           <span class="time" id="time-left">0:00</span>
         </div>
-        <div class="player-buttons d-none d-md-flex">
+        <div class="player-buttons d-none d-md-flex mt-md-2">
           <button class="player-btn" id="shuffle-btn-desktop" title="Shuffle"></button>
           <button class="player-btn" id="prev-btn-desktop" title="Previous"></button>
           <button class="player-btn play-btn" id="play-pause-btn-desktop" title="Play"></button>
