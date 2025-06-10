@@ -12,13 +12,13 @@ if (isset($_GET['pwa'])) {
       "description" => "A simple, fast music player.",
       "icons" => [
         [
-          "src" => "https://icons.getbootstrap.com/assets/icons/vinyl-fill.svg",
+          "src" => "https://icons.getbootstrap.com/assets/icons/boombox-fill.svg",
           "sizes" => "192x192",
           "type" => "image/svg+xml",
           "purpose" => "any maskable"
         ],
         [
-          "src" => "https://icons.getbootstrap.com/assets/icons/vinyl-fill.svg",
+          "src" => "https://icons.getbootstrap.com/assets/icons/boombox-fill.svg",
           "sizes" => "512x512",
           "type" => "image/svg+xml",
           "purpose" => "any maskable"
@@ -406,7 +406,7 @@ function scan_music_directory($db) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PHP Music Player</title>
-    <link rel="icon" type="image/svg+xml" href="https://icons.getbootstrap.com/assets/icons/code-slash.svg" />
+    <link rel="icon" type="image/svg+xml" href="https://icons.getbootstrap.com/assets/icons/boombox-fill.svg" />
     <meta name="theme-color" content="#121212"/>
     <link rel="manifest" href="?pwa=manifest">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
