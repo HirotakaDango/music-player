@@ -1,6 +1,6 @@
 # PHP Music Player
 
-A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, organize favorites, and install as a mobile/desktop app.
+A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, organize by artist/album, and more.
 
 ![screenshot 1](https://github.com/user-attachments/assets/95573c62-7bf9-4ea5-9bf2-0fbea11a427c)
 ![screenshot 2](https://github.com/user-attachments/assets/ccb66c16-0679-49dc-ac34-1ea0513e98d5)
@@ -26,6 +26,55 @@ _No public demo yet – deploy locally to try!_
 - PHP 7.4+ with `pdo_sqlite`, `gd`, and `mbstring` extensions.
 - [getID3 library](https://github.com/JamesHeinrich/getID3) (just extract to a `getid3` folder).
 - A folder full of music files!
+
+## How to Activate SQLite in XAMPP/LAMPP
+
+If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite, you may need to enable the SQLite extension:
+
+### For XAMPP (Windows/macOS/Linux)
+
+1. Open your `php.ini` file.  
+   - Usually found in `xampp/php/php.ini`.
+
+2. Search for the following lines and ensure they are **not** commented (remove the leading semicolon `;` if present):
+
+    ```
+    extension=pdo_sqlite
+    extension=sqlite3
+    ```
+
+3. Save the `php.ini` file.
+
+4. **Restart Apache** using the XAMPP control panel for changes to take effect.
+
+### For LAMPP (Linux)
+
+1. Open your `php.ini` file located at `/opt/lampp/etc/php.ini`.
+
+2. Find and ensure these lines are enabled (no leading semicolon):
+
+    ```
+    extension=pdo_sqlite
+    extension=sqlite3
+    ```
+
+3. Save the file.
+
+4. Restart Apache:
+
+    ```bash
+    sudo /opt/lampp/lampp restart
+    ```
+
+### Verify SQLite is enabled
+
+- Create a `phpinfo.php` file with:
+    ```php
+    <?php phpinfo(); ?>
+    ```
+- Open it in your browser and search for "sqlite" or "PDO drivers". You should see `sqlite3` and `pdo_sqlite` enabled.
+
+---
 
 ## Installation
 
