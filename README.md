@@ -19,7 +19,7 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 
 ## Demo
 
-[Try it here.](phpmusic.rf.gd/)
+[Try it here.](http://phpmusic.rf.gd/)
 
 ## Requirements
 
