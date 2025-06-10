@@ -226,6 +226,11 @@ if (isset($_GET['action'])) {
           $params[] = $param;
           $default_sort = 'album_asc';
           break;
+        case 'album_songs':
+          $conditions = "WHERE album = ?";
+          $params[] = $param;
+          $default_sort = 'title_asc'; // A sensible default sort for songs within an album
+          break;
         case 'search':
           $conditions = "WHERE title LIKE ? OR artist LIKE ? OR album LIKE ?";
           $query_param = '%' . $param . '%';
