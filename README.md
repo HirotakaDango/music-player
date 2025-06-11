@@ -176,5 +176,3 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite, you ma
 
 Enjoy your self-hosted PHP music player!  
 Contributions and feedback welcome.
-
-```
