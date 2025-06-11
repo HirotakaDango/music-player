@@ -1,5 +1,7 @@
 <?php
+// PWA (Progressive Web App) Handler
 if (isset($_GET['pwa'])) {
+  // Serve the Web App Manifest
   if ($_GET['pwa'] == 'manifest') {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
@@ -9,57 +11,35 @@ if (isset($_GET['pwa'])) {
       "display" => "standalone",
       "background_color" => "#030303",
       "theme_color" => "#121212",
-      "description" => "A simple, fast music player.",
+      "description" => "A simple, fast music player with user accounts and uploads.",
       "icons" => [
         [
-          "src" => "https://icons.getbootstrap.com/assets/icons/boombox-fill.svg",
-          "sizes" => "192x192",
+          "src" => "?action=get_app_icon",
+          "sizes" => "any",
           "type" => "image/svg+xml",
-          "purpose" => "any maskable"
-        ],
-        [
-          "src" => "https://icons.getbootstrap.com/assets/icons/boombox-fill.svg",
-          "sizes" => "512x512",
-          "type" => "image/svg+xml",
-          "purpose" => "any maskable"
+          "purpose" => "any"
         ]
       ]
     ]);
     exit;
   }
+  // Serve the Service Worker
   if ($_GET['pwa'] == 'sw') {
     header('Content-Type: application/javascript; charset=utf-8');
+    // We use a Network-First, then Cache strategy for dynamic content.
+    // For static assets, we use Cache-First. This ensures the app is fast but data is always fresh.
     echo <<<SW
-    const CACHE_NAME = 'php-music-cache-v2';
-    const URLS_TO_CACHE = [
+    const CACHE_NAME = 'php-music-cache-v7';
+    const STATIC_ASSETS = [
       './',
       'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
       'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css',
-      'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js'
+      'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js',
+      'https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js'
     ];
 
     self.addEventListener('install', event => {
-      event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(URLS_TO_CACHE)));
-    });
-
-    self.addEventListener('fetch', event => {
-      const url = new URL(event.request.url);
-      if (url.search.includes('action=get_stream')) {
-        event.respondWith(fetch(event.request));
-        return;
-      }
-      event.respondWith(
-        caches.match(event.request).then(response => {
-          if (response) return response;
-          return fetch(event.request).then(networkResponse => {
-            if (url.search.includes('action=get_')) {
-               const cacheableResponse = networkResponse.clone();
-               caches.open(CACHE_NAME).then(cache => cache.put(event.request, cacheableResponse));
-            }
-            return networkResponse;
-          });
-        })
-      );
+      event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS)));
     });
 
     self.addEventListener('activate', event => {
@@ -73,6 +53,33 @@ if (isset($_GET['pwa'])) {
               }
             })
           );
+        })
+      );
+    });
+
+    self.addEventListener('fetch', event => {
+      const url = new URL(event.request.url);
+      const isApiCall = url.searchParams.has('action');
+      const isPwaCall = url.searchParams.has('pwa');
+
+      // Always go to the network for API calls and PWA files to ensure freshness.
+      // This prevents issues with stale data for favorites, deletions, etc.
+      if (isApiCall || isPwaCall) {
+        event.respondWith(fetch(event.request));
+        return;
+      }
+      
+      // For all other requests (static assets), use a Cache-first strategy.
+      event.respondWith(
+        caches.match(event.request).then(response => {
+          return response || fetch(event.request).then(networkResponse => {
+            // Cache newly fetched static assets.
+            if (networkResponse && networkResponse.ok) {
+               const responseToCache = networkResponse.clone();
+               caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
+            }
+            return networkResponse;
+          });
         })
       );
     });
@@ -95,7 +102,7 @@ if (file_exists(__DIR__ . '/getid3/getid3.php')) {
 
 function get_db() {
   try {
-    $db = new PDO('sqlite:' . DB_FILE);
+    $db = new PDO('sqlite:' . DB_FILE, null, null, [PDO::ATTR_TIMEOUT => 30]);
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     return $db;
@@ -105,21 +112,64 @@ function get_db() {
 }
 
 function init_db($db) {
+  $db->exec("PRAGMA journal_mode=WAL;");
+  $db->exec("
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY,
+      email TEXT UNIQUE,
+      artist TEXT,
+      password_hash TEXT
+    );
+  ");
   $db->exec("
     CREATE TABLE IF NOT EXISTS music (
       id INTEGER PRIMARY KEY,
+      user_id INTEGER,
       file TEXT UNIQUE,
       title TEXT,
       artist TEXT,
       album TEXT,
+      genre TEXT,
       year INTEGER,
       duration INTEGER,
-      image BLOB
+      image BLOB,
+      last_modified INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     );
   ");
-  $db->exec("CREATE INDEX IF NOT EXISTS artist_idx ON music(artist);");
-  $db->exec("CREATE INDEX IF NOT EXISTS album_idx ON music(album);");
-  $db->exec("CREATE INDEX IF NOT EXISTS year_idx ON music(year);");
+  $db->exec("
+    CREATE TABLE IF NOT EXISTS favorites (
+      user_id INTEGER NOT NULL,
+      song_id INTEGER NOT NULL,
+      sort_order INTEGER,
+      PRIMARY KEY (user_id, song_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (song_id) REFERENCES music(id) ON DELETE CASCADE
+    );
+  ");
+  $db->exec("CREATE INDEX IF NOT EXISTS music_artist_idx ON music(artist);");
+  $db->exec("CREATE INDEX IF NOT EXISTS music_album_idx ON music(album);");
+  $db->exec("CREATE INDEX IF NOT EXISTS music_genre_idx ON music(genre);");
+  $db->exec("CREATE INDEX IF NOT EXISTS music_user_id_idx ON music(user_id);");
+  $db->exec("CREATE INDEX IF NOT EXISTS fav_user_id_idx ON favorites(user_id);");
+
+  $stmt = $db->query("SELECT id FROM users WHERE email = 'musiclibrary@mail.com'");
+  if (!$stmt->fetch()) {
+    $db->prepare("INSERT INTO users (email, artist, password_hash) VALUES (?, ?, ?)")
+      ->execute(['musiclibrary@mail.com', 'Music Library', password_hash('musiclibrary', PASSWORD_DEFAULT)]);
+  }
+}
+
+function sanitize_for_path($string) {
+  $string = strtolower($string);
+  $string = preg_replace('/[^a-z0-9]/', '', $string);
+  return empty($string) ? 'unknown' : $string;
+}
+
+function get_upload_limit() {
+  $max_upload = ini_get('upload_max_filesize');
+  $max_post = ini_get('post_max_size');
+  return "Max file size: " . min($max_upload, $max_post);
 }
 
 function process_image_to_webp($imageData) {
@@ -128,22 +178,15 @@ function process_image_to_webp($imageData) {
   }
   $sourceImage = @imagecreatefromstring($imageData);
   if (!$sourceImage) { return null; }
-  $originalWidth = imagesx($sourceImage);
-  $originalHeight = imagesy($sourceImage);
-  $maxWidth = 500; $maxHeight = 500;
-  $newWidth = $originalWidth; $newHeight = $originalHeight;
-  if ($originalWidth > $maxWidth || $originalHeight > $maxHeight) {
-    $ratio = $originalWidth / $originalHeight;
-    if ($ratio > 1) {
-      $newWidth = $maxWidth; $newHeight = $maxWidth / $ratio;
-    } else {
-      $newHeight = $maxHeight; $newWidth = $maxHeight * $ratio;
-    }
-  }
-  $resizedImage = imagecreatetruecolor((int)$newWidth, (int)$newHeight);
+
+  $target_width = 250;
+  $target_height = 250;
+
+  $resizedImage = imagecreatetruecolor($target_width, $target_height);
   imagealphablending($resizedImage, false);
   imagesavealpha($resizedImage, true);
-  imagecopyresampled($resizedImage, $sourceImage, 0, 0, 0, 0, (int)$newWidth, (int)$newHeight, $originalWidth, $originalHeight);
+  imagecopyresampled($resizedImage, $sourceImage, 0, 0, 0, 0, $target_width, $target_height, imagesx($sourceImage), imagesy($sourceImage));
+
   ob_start();
   imagewebp($resizedImage, null, 75);
   $webpData = ob_get_clean();
@@ -152,18 +195,119 @@ function process_image_to_webp($imageData) {
   return $webpData;
 }
 
+// API Action Router
 if (isset($_GET['action'])) {
   $action = $_GET['action'];
   $db = get_db();
   init_db($db);
-  header('Content-Type: application/json; charset=utf-8');
 
-  $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+  // Set headers to prevent caching of API responses, ensuring real-time updates.
+  header('Content-Type: application/json; charset=utf-8');
+  header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+  header('Pragma: no-cache');
+  header('Expires: 0');
+
+  $user_id = $_SESSION['user_id'] ?? null;
+  $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
   $offset = ($page - 1) * PAGE_SIZE;
   $limit_clause = " LIMIT " . PAGE_SIZE . " OFFSET " . $offset;
 
   switch ($action) {
+    case 'get_app_icon':
+      // Serve a scalable SVG icon directly. No Imagick or Base64 PNG needed.
+      header_remove('Content-Type');
+      header('Content-Type: image/svg+xml');
+      $size = intval($_GET['size'] ?? 192); // Size is for reference, SVG is scalable
+      echo '<svg xmlns="http://www.w3.org/2000/svg" width="'.$size.'" height="'.$size.'" fill="white" class="bi bi-boombox-fill" viewBox="0 0 16 16"><path d="M11.538 6.237a.5.5 0 0 0-.738.03l-1.36 2.04a.5.5 0 0 0 .37.823h2.72a.5.5 0 0 0 .37-.823l-1.359-2.04a.5.5 0 0 0-.363-.17z"/><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM4.5 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2m7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2M6 6.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 0-1h-3a.5.5 0 0 0-.5.5m-1.5 6a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 0-1h-5a.5.5 0 0 0-.5.5"/></svg>';
+      exit;
+
+    case 'get_session':
+      if ($user_id) {
+        $stmt = $db->prepare("SELECT id, email, artist FROM users WHERE id = ?");
+        $stmt->execute([$user_id]);
+        $user = $stmt->fetch();
+        if ($user) {
+          echo json_encode(['status' => 'loggedin', 'user' => $user, 'upload_limit' => get_upload_limit()]);
+        } else {
+          session_destroy();
+          echo json_encode(['status' => 'loggedout']);
+        }
+      } else {
+        echo json_encode(['status' => 'loggedout']);
+      }
+      break;
+
+    case 'register':
+      $data = json_decode(file_get_contents('php://input'), true);
+      $email = filter_var($data['email'], FILTER_VALIDATE_EMAIL);
+      $artist = trim(htmlspecialchars($data['artist'], ENT_QUOTES, 'UTF-8'));
+      $password = $data['password'];
+
+      if (!$email || empty($artist) || strlen($password) < 6) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid data. Password needs 6+ characters.']);
+        exit;
+      }
+      $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+      $stmt->execute([$email]);
+      if ($stmt->fetch()) {
+        http_response_code(409);
+        echo json_encode(['status' => 'error', 'message' => 'Email already registered.']);
+        exit;
+      }
+
+      $hash = password_hash($password, PASSWORD_DEFAULT);
+      $stmt = $db->prepare("INSERT INTO users (email, artist, password_hash) VALUES (?, ?, ?)");
+      $stmt->execute([$email, $artist, $hash]);
+      echo json_encode(['status' => 'success', 'message' => 'Registration successful. Please log in.']);
+      break;
+
+    case 'login':
+      $data = json_decode(file_get_contents('php://input'), true);
+      $email = filter_var($data['email'], FILTER_VALIDATE_EMAIL);
+      $password = $data['password'];
+
+      if (!$email || empty($password)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Email and password are required.']);
+        exit;
+      }
+      $stmt = $db->prepare("SELECT * FROM users WHERE email = ?");
+      $stmt->execute([$email]);
+      $user = $stmt->fetch();
+      if ($user && password_verify($password, $user['password_hash'])) {
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user_artist'] = $user['artist'];
+        unset($user['password_hash']);
+        echo json_encode(['status' => 'success', 'user' => $user, 'upload_limit' => get_upload_limit()]);
+      } else {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid credentials.']);
+      }
+      break;
+
+    case 'logout':
+      session_destroy();
+      echo json_encode(['status' => 'success']);
+      break;
+
+    case 'change_password':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $new_password = $data['new_password'];
+      if (strlen($new_password) < 6) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Password must be at least 6 characters.']);
+        exit;
+      }
+      $hash = password_hash($new_password, PASSWORD_DEFAULT);
+      $stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+      $stmt->execute([$hash, $user_id]);
+      echo json_encode(['status' => 'success', 'message' => 'Password changed successfully.']);
+      break;
+
     case 'scan':
+      if (!$user_id) { http_response_code(403); exit; }
       echo json_encode(['status' => 'starting']);
       session_write_close();
       ob_flush(); flush();
@@ -174,31 +318,225 @@ if (isset($_GET['action'])) {
       echo json_encode(['status' => $_SESSION['scan_status'] ?? 'idle', 'message' => $_SESSION['scan_message'] ?? '']);
       break;
 
+    case 'upload_song':
+      if (!$user_id) { http_response_code(403); exit; }
+      if (!class_exists('getID3')) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'getID3 library is missing.']);
+        exit;
+      }
+      if (isset($_FILES['song'])) {
+        $file = $_FILES['song'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Upload error: ' . $file['error']]);
+            exit;
+        }
+        $getID3 = new getID3;
+        $info = $getID3->analyze($file['tmp_name']);
+        getid3_lib::CopyTagsToComments($info);
+
+        $artist = trim($info['comments']['artist'][0] ?? 'Unknown Artist');
+        $artist_path = sanitize_for_path($artist);
+        $upload_dir = MUSIC_DIR . '/uploads/' . $artist_path;
+        if (!is_dir($upload_dir)) {
+          mkdir($upload_dir, 0755, true);
+        }
+
+        $filename = preg_replace('/[^a-zA-Z0-9\._-]/', '', basename($file['name']));
+        $filePath = $upload_dir . '/' . $filename;
+        if (move_uploaded_file($file['tmp_name'], $filePath)) {
+          $title = trim($info['comments']['title'][0] ?? pathinfo($filePath, PATHINFO_FILENAME));
+          $album = trim($info['comments']['album'][0] ?? 'Unknown Album');
+          $year = (int)($info['comments']['year'][0] ?? 0);
+          $duration = (int)($info['playtime_seconds'] ?? 0);
+          // FIX: Use genre from file first, then from form, then default.
+          $genre = trim($info['comments']['genre'][0] ?? '') ?: trim($_POST['genre'] ?? '') ?: 'Uploaded';
+          $raw_image_data = isset($info['comments']['picture'][0]['data']) ? $info['comments']['picture'][0]['data'] : null;
+          $webp_image_data = process_image_to_webp($raw_image_data);
+
+          $stmt = $db->prepare("INSERT INTO music (user_id, file, title, artist, album, genre, year, duration, image, last_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+          $stmt->execute([$user_id, $filePath, $title, $artist, $album, $genre, $year, $duration, $webp_image_data, time()]);
+
+          echo json_encode(['status' => 'success', 'message' => 'File ' . $filename . ' uploaded.']);
+        } else {
+          http_response_code(500);
+          echo json_encode(['status' => 'error', 'message' => 'Failed to move uploaded file.']);
+        }
+      }
+      break;
+
+    case 'delete_song':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $song_id = intval($data['id']);
+
+      $stmt = $db->prepare("SELECT file, user_id FROM music WHERE id = ?");
+      $stmt->execute([$song_id]);
+      $song = $stmt->fetch();
+      
+      if ($song && ($song['user_id'] == $user_id || $_SESSION['user_artist'] == 'Music Library')) {
+        $db->prepare("DELETE FROM music WHERE id = ?")->execute([$song_id]);
+        if ($song['file'] && file_exists($song['file']) && strpos(realpath($song['file']), realpath(MUSIC_DIR . '/uploads')) === 0) {
+          @unlink($song['file']);
+        }
+        echo json_encode(['status' => 'success', 'message' => 'Song deleted.']);
+      } else {
+        http_response_code(403);
+        echo json_encode(['status' => 'error', 'message' => 'You do not have permission.']);
+      }
+      break;
+
+    case 'download_song':
+      if (!$user_id) { http_response_code(403); exit; }
+      $song_id = intval($_GET['id'] ?? 0);
+      $stmt = $db->prepare("SELECT file FROM music WHERE id = ?");
+      $stmt->execute([$song_id]);
+      $song = $stmt->fetch();
+
+      if ($song && file_exists($song['file'])) {
+        header_remove('Content-Type');
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        header('Content-Type: ' . finfo_file($finfo, $song['file']));
+        finfo_close($finfo);
+        header('Content-Length: ' . filesize($song['file']));
+        header('Content-Disposition: attachment; filename="' . basename($song['file']) . '"');
+        ob_clean();
+        flush();
+        readfile($song['file']);
+        exit;
+      } else {
+        http_response_code(404);
+        echo json_encode(['status' => 'error', 'message' => 'File not found.']);
+      }
+      break;
+
+    case 'edit_genre':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $song_id = intval($data['id']);
+      $new_genre = trim(htmlspecialchars($data['genre'] ?? '', ENT_QUOTES, 'UTF-8'));
+
+      if (empty($new_genre)) {
+          http_response_code(400);
+          echo json_encode(['status' => 'error', 'message' => 'Genre cannot be empty.']);
+          exit;
+      }
+
+      $stmt = $db->prepare("SELECT user_id FROM music WHERE id = ?");
+      $stmt->execute([$song_id]);
+      $song = $stmt->fetch();
+
+      if ($song && ($song['user_id'] == $user_id || $_SESSION['user_artist'] == 'Music Library')) {
+          $stmt = $db->prepare("UPDATE music SET genre = ? WHERE id = ?");
+          $stmt->execute([$new_genre, $song_id]);
+          echo json_encode(['status' => 'success', 'message' => 'Genre updated successfully.']);
+      } else {
+          http_response_code(403);
+          echo json_encode(['status' => 'error', 'message' => 'You do not have permission to edit this song.']);
+      }
+      break;
+    
     case 'get_songs':
       $sort_key = $_GET['sort'] ?? 'artist_asc';
       $sort_map = [
-        'artist_asc' => 'ORDER BY artist ASC, album ASC, title ASC',
-        'title_asc' => 'ORDER BY title ASC',
-        'album_asc' => 'ORDER BY album ASC, title ASC',
-        'year_desc' => 'ORDER BY year DESC, album ASC, title ASC',
-        'year_asc' => 'ORDER BY year ASC, album ASC, title ASC'
+        'artist_asc' => 'ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
+        'title_asc' => 'ORDER BY title COLLATE NOCASE ASC',
+        'album_asc' => 'ORDER BY album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
+        'year_desc' => 'ORDER BY year DESC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
+        'year_asc' => 'ORDER BY year ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC'
       ];
       $order_by = $sort_map[$sort_key] ?? $sort_map['artist_asc'];
-      $stmt = $db->query("SELECT id, title, artist, album, duration FROM music " . $order_by . $limit_clause);
+
+      $where_clauses = [];
+      $params = [];
+      if (!empty($_GET['artist'])) {
+        $where_clauses[] = 'artist = ?';
+        $params[] = $_GET['artist'];
+      }
+      if (!empty($_GET['album'])) {
+        $where_clauses[] = 'album = ?';
+        $params[] = $_GET['album'];
+      }
+      if (!empty($_GET['genre'])) {
+        $where_clauses[] = 'genre = ?';
+        $params[] = $_GET['genre'];
+      }
+      $where_sql = count($where_clauses) > 0 ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
+      
+      $stmt = $db->prepare("SELECT id, title, artist, album, duration, user_id FROM music " . $where_sql . " " . $order_by . $limit_clause);
+      $stmt->execute($params);
+      echo json_encode($stmt->fetchAll());
+      break;
+
+    case 'get_profile_songs':
+      if (!$user_id) { echo json_encode([]); exit; }
+      $sort_key = $_GET['sort'] ?? 'artist_asc';
+      $sort_map = [
+        'artist_asc' => 'ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
+        'title_asc' => 'ORDER BY title COLLATE NOCASE ASC',
+        'album_asc' => 'ORDER BY album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
+        'year_desc' => 'ORDER BY year DESC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
+        'year_asc' => 'ORDER BY year ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC'
+      ];
+      $order_by = $sort_map[$sort_key] ?? $sort_map['artist_asc'];
+      $stmt = $db->prepare("SELECT id, title, artist, album, duration, user_id FROM music WHERE user_id = ? " . $order_by . $limit_clause);
+      $stmt->execute([$user_id]);
       echo json_encode($stmt->fetchAll());
       break;
 
     case 'get_favorites':
-      $post_data = json_decode(file_get_contents('php://input'), true);
-      $ids = $post_data['ids'] ?? [];
-      if (empty($ids)) {
-        echo json_encode([]);
-        exit;
-      }
-      $placeholders = implode(',', array_fill(0, count($ids), '?'));
-      $stmt = $db->prepare("SELECT id, title, artist, album, duration FROM music WHERE id IN ($placeholders) " . $limit_clause);
-      $stmt->execute($ids);
+      if (!$user_id) { echo json_encode([]); exit; }
+      $sort_key = $_GET['sort'] ?? 'manual_order';
+      $sort_map = [
+        'manual_order' => 'ORDER BY f.sort_order ASC',
+        'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
+        'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+      ];
+      $order_by = $sort_map[$sort_key] ?? $sort_map['manual_order'];
+      $stmt = $db->prepare("SELECT m.id, m.title, m.artist, m.album, m.duration, m.user_id FROM music m JOIN favorites f ON m.id = f.song_id WHERE f.user_id = ? " . $order_by . $limit_clause);
+      $stmt->execute([$user_id]);
       echo json_encode($stmt->fetchAll());
+      break;
+    
+    case 'toggle_favorite':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $song_id = intval($data['id']);
+      $stmt = $db->prepare("SELECT song_id FROM favorites WHERE user_id = ? AND song_id = ?");
+      $stmt->execute([$user_id, $song_id]);
+      if ($stmt->fetch()) {
+        $db->prepare("DELETE FROM favorites WHERE user_id = ? AND song_id = ?")->execute([$user_id, $song_id]);
+        echo json_encode(['status' => 'removed', 'is_favorite' => false]);
+      } else {
+        $stmt = $db->prepare("SELECT MAX(sort_order) as max_order FROM favorites WHERE user_id = ?");
+        $stmt->execute([$user_id]);
+        $max_order = $stmt->fetchColumn() ?? 0;
+        $db->prepare("INSERT INTO favorites (user_id, song_id, sort_order) VALUES (?, ?, ?)")->execute([$user_id, $song_id, $max_order + 1]);
+        echo json_encode(['status' => 'added', 'is_favorite' => true]);
+      }
+      break;
+
+    case 'update_favorite_order':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $ordered_ids = $data['ids'];
+      $db->beginTransaction();
+      try {
+        foreach ($ordered_ids as $index => $song_id) {
+          $db->prepare("UPDATE favorites SET sort_order = ? WHERE user_id = ? AND song_id = ?")
+             ->execute([$index, $user_id, $song_id]);
+        }
+        $db->commit();
+        echo json_encode(['status' => 'success']);
+      } catch (Exception $e) {
+        $db->rollBack();
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Failed to update order.']);
+      }
       break;
 
     case 'get_view_ids':
@@ -206,105 +544,112 @@ if (isset($_GET['action'])) {
       $view_type = $post_data['view_type'] ?? '';
       $param = $post_data['param'] ?? '';
       $sort = $post_data['sort'] ?? '';
-      $ids = $post_data['ids'] ?? [];
 
-      $sql = "SELECT id FROM music ";
+      // FIX: Decode param for views where it's URL encoded from a data attribute.
+      if (in_array($view_type, ['artist_songs', 'album_songs', 'genre_songs'])) {
+        $param = urldecode($param);
+      }
+
+      $sql = "SELECT m.id FROM music m ";
       $conditions = "";
       $params = [];
       $default_sort = 'artist_asc';
 
       switch ($view_type) {
         case 'songs': break;
+        case 'profile_songs':
+          if (!$user_id) { echo json_encode([]); exit; }
+          $conditions = "WHERE m.user_id = ?";
+          $params[] = $user_id;
+          break;
         case 'favorites':
-          if (empty($ids)) { echo json_encode([]); exit; }
-          $placeholders = implode(',', array_fill(0, count($ids), '?'));
-          $conditions = "WHERE id IN ($placeholders)";
-          $params = $ids;
+          if (!$user_id) { echo json_encode([]); exit; }
+          $sql = "SELECT m.id FROM music m JOIN favorites f ON m.id = f.song_id ";
+          $conditions = "WHERE f.user_id = ?";
+          $params[] = $user_id;
+          $default_sort = 'manual_order';
           break;
         case 'artist_songs':
-          $conditions = "WHERE artist = ?";
+          $conditions = "WHERE m.artist = ?";
           $params[] = $param;
           $default_sort = 'album_asc';
           break;
         case 'album_songs':
-          $conditions = "WHERE album = ?";
+          $conditions = "WHERE m.album = ?";
           $params[] = $param;
-          $default_sort = 'title_asc'; // A sensible default sort for songs within an album
+          $default_sort = 'title_asc';
+          break;
+        case 'genre_songs':
+          $conditions = "WHERE m.genre = ?";
+          $params[] = $param;
+          $default_sort = 'artist_asc';
           break;
         case 'search':
-          $conditions = "WHERE title LIKE ? OR artist LIKE ? OR album LIKE ?";
+          $conditions = "WHERE m.title LIKE ? OR m.artist LIKE ? OR m.album LIKE ?";
           $query_param = '%' . $param . '%';
           $params = [$query_param, $query_param, $query_param];
           break;
         default:
           echo json_encode([]); exit;
       }
-
       $sort_map = [
-        'artist_asc' => 'ORDER BY artist ASC, album ASC, title ASC',
-        'title_asc' => 'ORDER BY title ASC',
-        'album_asc' => 'ORDER BY album ASC, title ASC',
-        'year_desc' => 'ORDER BY year DESC, album ASC, title ASC',
-        'year_asc' => 'ORDER BY year ASC, album ASC, title ASC'
+        'manual_order' => 'ORDER BY f.sort_order ASC',
+        'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
+        'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
       ];
-
-      // For search, always use a fixed sort order, ignoring what client sends.
-      if ($view_type === 'search') {
-          $order_by = $sort_map['artist_asc'];
-      } else {
-          $order_by = $sort_map[$sort] ?? $sort_map[$default_sort];
-      }
-
+      $order_by = $sort_map[$sort] ?? $sort_map[$default_sort];
+      
       $stmt = $db->prepare($sql . $conditions . " " . $order_by);
       $stmt->execute($params);
       echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
       exit;
 
     case 'get_artists':
-      $stmt = $db->query("SELECT DISTINCT artist FROM music WHERE artist != '' AND artist IS NOT NULL ORDER BY artist " . $limit_clause);
+      $stmt = $db->query("SELECT DISTINCT artist FROM music WHERE artist != '' AND artist IS NOT NULL ORDER BY artist COLLATE NOCASE " . $limit_clause);
       echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
       break;
 
     case 'get_albums':
-      $stmt = $db->query("SELECT album, artist, id FROM (SELECT album, artist, id, ROW_NUMBER() OVER (PARTITION BY album ORDER BY RANDOM()) as rn FROM music WHERE album != '' AND album IS NOT NULL) WHERE rn = 1 ORDER BY album" . $limit_clause);
+      $stmt = $db->query("SELECT album, artist, MAX(id) as id FROM music WHERE album != '' AND album IS NOT NULL GROUP BY album ORDER BY album COLLATE NOCASE " . $limit_clause);
       echo json_encode($stmt->fetchAll());
       break;
-
-    case 'get_by_artist':
-      $artist = $_GET['name'] ?? '';
-      $sort_key = $_GET['sort'] ?? 'album_asc';
-      $sort_map = [
-        'album_asc' => 'ORDER BY album ASC, title ASC',
-        'title_asc' => 'ORDER BY title ASC',
-        'year_desc' => 'ORDER BY year DESC, album ASC, title ASC',
-        'year_asc' => 'ORDER BY year ASC, album ASC, title ASC'
-      ];
-      $order_by = $sort_map[$sort_key] ?? $sort_map['album_asc'];
-      $stmt = $db->prepare("SELECT id, title, artist, album, duration FROM music WHERE artist = ? " . $order_by . $limit_clause);
-      $stmt->execute([$artist]);
-      echo json_encode($stmt->fetchAll());
+    
+    case 'get_genres':
+      $stmt = $db->query("SELECT DISTINCT genre FROM music WHERE genre != '' AND genre IS NOT NULL ORDER BY genre COLLATE NOCASE " . $limit_clause);
+      echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
       break;
 
-    case 'get_by_album':
-      $album = $_GET['name'] ?? '';
-      $stmt = $db->prepare("SELECT id, title, artist, album, duration FROM music WHERE album = ? ORDER BY id " . $limit_clause);
-      $stmt->execute([$album]);
-      echo json_encode($stmt->fetchAll());
+    case 'get_view_details':
+      $type = $_GET['type'] ?? '';
+      $name = $_GET['name'] ?? '';
+      if (empty($type) || empty($name) || !in_array($type, ['artist', 'album', 'genre'])) {
+        http_response_code(400); exit;
+      }
+      $field = $type;
+      $stmt = $db->prepare("SELECT COUNT(*) as song_count, SUM(duration) as total_duration, MAX(id) as image_id FROM music WHERE {$field} = ?");
+      $stmt->execute([$name]);
+      $details = $stmt->fetch();
+      $details['name'] = $name;
+      $details['image_url'] = '?action=get_image&id=' . ($details['image_id'] ?? 0);
+      echo json_encode($details);
       break;
 
     case 'search':
       $query = '%' . ($_GET['q'] ?? '') . '%';
-      // Always use a fixed, predictable sort order for search to ensure it is reliable.
-      $order_by = 'ORDER BY artist ASC, album ASC, title ASC';
-      $stmt = $db->prepare("SELECT id, title, artist, album, duration FROM music WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? " . $order_by . " " . $limit_clause);
+      $order_by = 'ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC';
+      $stmt = $db->prepare("SELECT id, title, artist, album, duration, user_id FROM music WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? " . $order_by . " " . $limit_clause);
       $stmt->execute([$query, $query, $query]);
       echo json_encode($stmt->fetchAll());
       break;
 
     case 'get_song_data':
       $id = intval($_GET['id'] ?? 0);
-      $stmt = $db->prepare("SELECT id, file, title, artist, album, duration FROM music WHERE id = ?");
-      $stmt->execute([$id]);
+      // FIX: Added m.genre to the returned data for the edit feature.
+      $stmt = $db->prepare("SELECT m.id, m.file, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? WHERE m.id = ?");
+      $stmt->execute([$user_id, $id]);
       $song = $stmt->fetch();
       if ($song) {
         $song['stream_url'] = '?action=get_stream&id=' . $song['id'];
@@ -320,10 +665,36 @@ if (isset($_GET['action'])) {
       $stmt->execute([$id]);
       $file_path = $stmt->fetchColumn();
       if ($file_path && file_exists($file_path)) {
+        $filesize = filesize($file_path);
         header('Content-Type: audio/mpeg');
-        header('Content-Length: ' . filesize($file_path));
         header('Accept-Ranges: bytes');
-        readfile($file_path);
+        
+        if (isset($_SERVER['HTTP_RANGE'])) {
+          $range = $_SERVER['HTTP_RANGE'];
+          $range = str_replace('bytes=', '', $range);
+          list($start, $end) = explode('-', $range, 2);
+          $start = intval($start);
+          if (!$end) {
+            $end = $filesize - 1;
+          } else {
+            $end = intval($end);
+          }
+          $length = $end - $start + 1;
+          
+          header('HTTP/1.1 206 Partial Content');
+          header('Content-Length: ' . $length);
+          header("Content-Range: bytes $start-$end/$filesize");
+
+          $f = @fopen($file_path, 'rb');
+          if ($f) {
+            fseek($f, $start);
+            echo fread($f, $length);
+            fclose($f);
+          }
+        } else {
+          header('Content-Length: ' . $filesize);
+          readfile($file_path);
+        }
       } else {
         http_response_code(404);
       }
@@ -334,11 +705,10 @@ if (isset($_GET['action'])) {
       $id = intval($_GET['id'] ?? 0);
       $stmt = $db->prepare("SELECT image FROM music WHERE id = ?");
       $stmt->execute([$id]);
-      $stmt->bindColumn(1, $image_data, PDO::PARAM_LOB);
-      $result = $stmt->fetch(PDO::FETCH_BOUND);
-      if ($result && $image_data) {
+      $image_data = $stmt->fetchColumn();
+      if ($image_data) {
         header('Content-Type: image/webp');
-        fpassthru($image_data);
+        echo $image_data;
       } else {
         header('Content-Type: image/svg+xml');
         echo '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="#404040" class="bi bi-music-note" viewBox="0 0 16 16"><path d="M9 13c0 1.105-1.12 2-2.5 2S4 14.105 4 13s1.12-2 2.5-2 2.5.895 2.5 2"/><path fill-rule="evenodd" d="M9 3v10H8V3h1z"/><path d="M8 2.82a1 1 0 0 1 .804-.98l3-.6A1 1 0 0 1 13 2.22V4L8 5V2.82z"/></svg>';
@@ -348,56 +718,123 @@ if (isset($_GET['action'])) {
   exit;
 }
 
+/**
+ * SCANNER FIX: New recursive scanner using basic `scandir`.
+ * This is highly compatible with restricted shared hosting environments (like InfinityFree)
+ * that may disable `RecursiveDirectoryIterator` or have `open_basedir` restrictions.
+ * It also explicitly skips the 'uploads' directory for efficiency.
+ *
+ * @param string $dir The directory to scan.
+ * @param array &$results The array to store results in (by reference).
+ * @param string $uploads_path The full, real path to the user uploads directory to skip.
+ * @return void
+ */
+function get_music_files_recursive($dir, &$results, $uploads_path) {
+  if (!is_readable($dir)) { return; }
+  
+  $items = scandir($dir);
+  foreach ($items as $item) {
+    if ($item === '.' || $item === '..') {
+      continue;
+    }
+    
+    $path = $dir . DIRECTORY_SEPARATOR . $item;
+    
+    // Explicitly skip the entire uploads directory
+    if ($path === $uploads_path) {
+      continue;
+    }
+    
+    if (is_dir($path)) {
+      get_music_files_recursive($path, $results, $uploads_path);
+    } elseif (preg_match('/\.(mp3|m4a|flac|ogg|wav)$/i', $path)) {
+      $results[$path] = filemtime($path);
+    }
+  }
+}
+
 function scan_music_directory($db) {
   if (!class_exists('getID3')) {
-    $_SESSION['scan_status'] = 'error';
-    $_SESSION['scan_message'] = 'getID3 library not found.';
+    $_SESSION['scan_status'] = 'error'; $_SESSION['scan_message'] = 'getID3 library not found.'; return;
+  }
+  $_SESSION['scan_status'] = 'scanning'; $_SESSION['scan_message'] = 'Starting scan...'; session_write_close();
+
+  $stmt = $db->query("SELECT id FROM users WHERE email = 'musiclibrary@mail.com'");
+  $library_user_id = $stmt->fetchColumn();
+  if (!$library_user_id) {
+    session_start();
+    $_SESSION['scan_status'] = 'error'; $_SESSION['scan_message'] = 'Music Library user not found.';
+    session_write_close();
     return;
   }
-  $_SESSION['scan_status'] = 'scanning';
-  $_SESSION['scan_message'] = 'Starting scan...';
-  session_write_close();
+
+  $stmt = $db->query("SELECT file, last_modified FROM music WHERE user_id = " . $library_user_id);
+  $db_files = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
+  // Use the new, more compatible recursive scanner.
+  $disk_files = [];
+  $uploads_path = realpath(MUSIC_DIR . '/uploads');
+  get_music_files_recursive(MUSIC_DIR, $disk_files, $uploads_path);
+
+  $files_to_delete = array_diff_key($db_files, $disk_files);
+  $files_to_add = array_diff_key($disk_files, $db_files);
+  $files_to_check_for_update = array_intersect_key($disk_files, $db_files);
+  
+  if (!empty($files_to_delete)) {
+    $db->beginTransaction();
+    $delete_stmt = $db->prepare("DELETE FROM music WHERE file = ?");
+    foreach (array_keys($files_to_delete) as $file_path) {
+      $delete_stmt->execute([$file_path]);
+    }
+    $db->commit();
+  }
+  
+  $files_to_process = $files_to_add;
+  foreach ($files_to_check_for_update as $path => $mtime) {
+    if ($mtime > $db_files[$path]) {
+      $files_to_process[$path] = $mtime;
+    }
+  }
+
+  if (empty($files_to_process)) {
+    session_start(); $_SESSION['scan_status'] = 'finished'; $_SESSION['scan_message'] = 'Scan complete. No new or updated files found.'; session_write_close();
+    return;
+  }
+  
   $getID3 = new getID3;
-  $directory = new RecursiveDirectoryIterator(MUSIC_DIR, FilesystemIterator::SKIP_DOTS | FilesystemIterator::UNIX_PATHS);
-  $iterator = new RecursiveIteratorIterator($directory);
-  $musicFiles = new RegexIterator($iterator, '/\.(mp3|m4a|flac|ogg|wav)$/i');
-  $files_to_process = iterator_to_array($musicFiles);
-  $total = count($files_to_process);
-  $stmt = $db->prepare("INSERT OR REPLACE INTO music (id, file, title, artist, album, year, duration, image) VALUES ((SELECT id FROM music WHERE file = ?), ?, ?, ?, ?, ?, ?, ?)");
-  $count = 0;
-  foreach ($files_to_process as $file) {
-    session_start();
-    $filePath = $file->getPathname();
-    $_SESSION['scan_message'] = "Processing " . ($count + 1) . " of $total: " . basename($filePath);
-    session_write_close();
+  $insert_stmt = $db->prepare("INSERT INTO music (user_id, file, title, artist, album, genre, year, duration, image, last_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $update_stmt = $db->prepare("UPDATE music SET title=?, artist=?, album=?, genre=?, year=?, duration=?, image=?, last_modified=? WHERE file=?");
+  
+  $total = count($files_to_process); $count = 0;
+  foreach ($files_to_process as $filePath => $mtime) {
+    session_start(); $_SESSION['scan_message'] = "Processing " . ($count + 1) . " of $total: " . basename($filePath); session_write_close();
+    $count++;
+    
     try {
       $info = $getID3->analyze($filePath);
       getid3_lib::CopyTagsToComments($info);
-      $title = $info['comments_html']['title'][0] ?? pathinfo($filePath, PATHINFO_FILENAME);
-      $artist = $info['comments_html']['artist'][0] ?? 'Unknown Artist';
-      $album = $info['comments_html']['album'][0] ?? 'Unknown Album';
-      $year = (int)($info['comments_html']['year'][0] ?? 0);
+      $title = trim($info['comments']['title'][0] ?? pathinfo($filePath, PATHINFO_FILENAME));
+      $artist = trim($info['comments']['artist'][0] ?? 'Unknown Artist');
+      $album = trim($info['comments']['album'][0] ?? 'Unknown Album');
+      $genre = trim($info['comments']['genre'][0] ?? 'Unknown Genre');
+      $year = (int)($info['comments']['year'][0] ?? 0);
       $duration = (int)($info['playtime_seconds'] ?? 0);
       $raw_image_data = isset($info['comments']['picture'][0]['data']) ? $info['comments']['picture'][0]['data'] : null;
       $webp_image_data = process_image_to_webp($raw_image_data);
+      
       $db->beginTransaction();
-      $stmt->execute([
-        $filePath, $filePath,
-        trim(html_entity_decode($title, ENT_QUOTES | ENT_HTML5, 'UTF-8')),
-        trim(html_entity_decode($artist, ENT_QUOTES | ENT_HTML5, 'UTF-8')),
-        trim(html_entity_decode($album, ENT_QUOTES | ENT_HTML5, 'UTF-8')),
-        $year, $duration, $webp_image_data
-      ]);
+      if (isset($files_to_add[$filePath])) {
+        $insert_stmt->execute([$library_user_id, $filePath, $title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime]);
+      } else {
+        $update_stmt->execute([$title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime, $filePath]);
+      }
       $db->commit();
     } catch (Exception $e) {
       if ($db->inTransaction()) { $db->rollBack(); }
     }
-    $count++;
   }
-  session_start();
-  $_SESSION['scan_status'] = 'finished';
-  $_SESSION['scan_message'] = "Scan complete. Processed $count files.";
-  session_write_close();
+  
+  session_start(); $_SESSION['scan_status'] = 'finished'; $_SESSION['scan_message'] = "Scan complete. Processed $count files."; session_write_close();
 }
 ?>
 <!DOCTYPE html>
@@ -406,7 +843,7 @@ function scan_music_directory($db) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PHP Music Player</title>
-    <link rel="icon" type="image/svg+xml" href="https://icons.getbootstrap.com/assets/icons/boombox-fill.svg" />
+    <link rel="icon" type="image/svg+xml" href="?action=get_app_icon" />
     <meta name="theme-color" content="#121212"/>
     <link rel="manifest" href="?pwa=manifest">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -461,6 +898,40 @@ function scan_music_directory($db) {
       .content-area-wrapper {
         padding: 1.5rem 2rem;
         flex-grow: 1;
+      }
+      .view-details-header {
+        display: flex;
+        align-items: flex-end;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background-color: var(--ytm-surface);
+        border-radius: 8px;
+      }
+      .view-details-header-info {
+        min-width: 0;
+      }
+      .view-details-header img {
+        width: 150px;
+        height: 150px;
+        object-fit: cover;
+        border-radius: 6px;
+        flex-shrink: 0;
+      }
+      .view-details-header-info .type {
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--ytm-secondary-text);
+      }
+      .view-details-header-info .name {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0.5rem 0;
+      }
+      .view-details-header-info .stats {
+        font-size: 0.9rem;
+        color: var(--ytm-secondary-text);
       }
       @media (min-width: 768px) {
         .sidebar {
@@ -602,13 +1073,17 @@ function scan_music_directory($db) {
         cursor: pointer;
         border-radius: 4px;
       }
+      .song-item.ghost {
+        opacity: 0.4;
+      }
       .song-item:hover {
         background-color: var(--ytm-surface-2);
       }
       .song-item .song-title,
       .song-item .song-artist,
       .song-item .song-album,
-      .song-artist-name {
+      .song-artist-name,
+      .view-details-header-info .name {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -814,7 +1289,43 @@ function scan_music_directory($db) {
         align-items: center;
         gap: 1rem;
       }
+      .modal-content {
+        background-color: var(--ytm-surface);
+        border: none;
+        border-radius: 1rem;
+      }
+      .modal-header {
+        border-bottom: 1px solid var(--ytm-surface-2);
+      }
+      .modal-footer {
+        border-top: 1px solid var(--ytm-surface-2);
+      }
+      .form-control, .form-select {
+        background-color: var(--ytm-surface-2);
+        border: 1px solid #404040;
+        color: var(--ytm-primary-text);
+      }
+      .form-control:focus, .form-select:focus {
+        background-color: var(--ytm-surface-2);
+        border-color: #666;
+        color: var(--ytm-primary-text);
+        box-shadow: none;
+      }
+      .form-control::placeholder {
+        color: var(--ytm-secondary-text);
+      }
+      #upload-progress-area .progress {
+        height: 10px;
+      }
+      body.logged-out .logged-in-only { display: none !important; }
+      body.logged-in .logged-out-only { display: none !important; }
+      .text-truncate-width {
+        max-width: 600px;
+      }
       @media (max-width: 767.98px) {
+        .text-truncate-width {
+          max-width: 250px;
+        }
         body.player-visible {
           padding-bottom: 130px;
         }
@@ -916,6 +1427,14 @@ function scan_music_directory($db) {
           grid-column: 3;
           grid-row: 1 / span 2;
         }
+        .view-details-header {
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+        .view-details-header-info .name {
+          font-size: 1.75rem;
+        }
       }
       .loader {
         text-align: center;
@@ -925,7 +1444,7 @@ function scan_music_directory($db) {
       }
     </style>
   </head>
-  <body>
+  <body class="logged-out">
     <div class="app-container">
       <nav class="sidebar offcanvas-md offcanvas-start" tabindex="-1" id="main-nav-offcanvas">
         <div class="offcanvas-header">
@@ -934,13 +1453,10 @@ function scan_music_directory($db) {
         </div>
         <div class="offcanvas-body d-flex flex-column">
           <div class="logo d-none d-md-block">PHP<span>Music</span></div>
+          
           <a href="#" class="nav-link active" data-view="songs">
             <i class="bi bi-music-note-list"></i>
             <span>All Songs</span>
-          </a>
-          <a href="#" class="nav-link" data-view="favorites">
-            <i class="bi bi-heart-fill"></i>
-            <span>Favorites</span>
           </a>
           <a href="#" class="nav-link" data-view="albums">
             <i class="bi bi-disc-fill"></i>
@@ -950,24 +1466,54 @@ function scan_music_directory($db) {
             <i class="bi bi-people-fill"></i>
             <span>Artists</span>
           </a>
-          <a href="#" class="nav-link" id="scan-btn">
+          <a href="#" class="nav-link" data-view="genres">
+            <i class="bi bi-tags-fill"></i>
+            <span>Genres</span>
+          </a>
+
+          <a href="#" class="nav-link logged-in-only" data-view="profile_songs">
+            <i class="bi bi-person-circle"></i>
+            <span>My Music</span>
+          </a>
+          <a href="#" class="nav-link logged-in-only" data-view="favorites">
+            <i class="bi bi-heart-fill"></i>
+            <span>Favorites</span>
+          </a>
+          
+          <hr class="text-secondary">
+          
+          <a href="#" class="nav-link logged-out-only" data-bs-toggle="modal" data-bs-target="#login-modal">
+            <i class="bi bi-box-arrow-in-right"></i>
+            <span>Login</span>
+          </a>
+          <a href="#" class="nav-link logged-out-only" data-bs-toggle="modal" data-bs-target="#register-modal">
+            <i class="bi bi-person-plus-fill"></i>
+            <span>Register</span>
+          </a>
+          
+          <a href="#" class="nav-link logged-in-only" data-bs-toggle="modal" data-bs-target="#upload-modal">
+            <i class="bi bi-cloud-upload-fill"></i>
+            <span>Upload Song</span>
+          </a>
+          <a href="#" class="nav-link logged-in-only" id="scan-btn">
             <i class="bi bi-arrow-repeat"></i>
             <span>Scan Library</span>
           </a>
+          <a href="#" class="nav-link logged-in-only" data-bs-toggle="modal" data-bs-target="#settings-modal">
+            <i class="bi bi-gear-fill"></i>
+            <span>Settings</span>
+          </a>
+          <a href="#" class="nav-link logged-in-only" id="logout-btn">
+            <i class="bi bi-box-arrow-left"></i>
+            <span>Logout</span>
+          </a>
+
+          <hr class="text-secondary">
+
           <a href="#" class="nav-link d-none" id="install-pwa-btn">
             <i class="bi bi-cloud-arrow-down-fill"></i>
             <span>Install App</span>
           </a>
-          <hr class="text-secondary">
-          <a href="#" class="nav-link" id="import-btn">
-            <i class="bi bi-box-arrow-in-down"></i>
-            <span>Import Favorites</span>
-          </a>
-          <a href="#" class="nav-link" id="export-btn">
-            <i class="bi bi-box-arrow-up"></i>
-            <span>Export Favorites</span>
-          </a>
-          <input type="file" id="import-file-input" class="d-none" accept=".json">
           <div class="scan-status">
             <p id="scan-status-text" class="badge bg-primary fw-bold">Ready.</p>
             <div class="progress d-none" id="scan-progress-bar-container">
@@ -1043,11 +1589,108 @@ function scan_music_directory($db) {
         </div>
       </div>
       <div class="extra-controls d-none d-md-flex">
-         <button class="player-btn" id="favorite-btn-desktop" title="Favorite"></button>
+         <button class="player-btn logged-in-only" id="favorite-btn-desktop" title="Favorite"></button>
       </div>
     </div>
     <ul class="context-menu" id="context-menu"></ul>
+
+    <div class="modal fade" id="login-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Login</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="login-form">
+              <div class="mb-3">
+                <label for="login-email" class="form-label">Email address</label>
+                <input type="email" class="form-control" id="login-email" required>
+              </div>
+              <div class="mb-3">
+                <label for="login-password" class="form-label">Password</label>
+                <input type="password" class="form-control" id="login-password" required>
+              </div>
+              <button type="submit" class="btn btn-danger w-100">Login</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="register-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Register</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="register-form">
+              <div class="mb-3">
+                <label for="register-email" class="form-label">Email address</label>
+                <input type="email" class="form-control" id="register-email" required>
+              </div>
+              <div class="mb-3">
+                <label for="register-artist" class="form-label">Artist/Display Name</label>
+                <input type="text" class="form-control" id="register-artist" required>
+              </div>
+              <div class="mb-3">
+                <label for="register-password" class="form-label">Password</label>
+                <input type="password" class="form-control" id="register-password" required minlength="6">
+              </div>
+              <button type="submit" class="btn btn-danger w-100">Register</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="settings-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Settings</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <h6>Change Password</h6>
+            <form id="change-password-form">
+              <div class="mb-3">
+                <label for="new-password" class="form-label">New Password</label>
+                <input type="password" class="form-control" id="new-password" required minlength="6">
+              </div>
+              <button type="submit" class="btn btn-danger w-100">Save Password</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="upload-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Upload Music</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="song-files" class="form-label">Select songs to upload</label>
+              <input class="form-control" type="file" id="song-files" multiple accept="audio/*">
+              <small class="form-text text-secondary" id="upload-limit-text"></small>
+            </div>
+            <div class="mb-3">
+              <!-- FIX: Updated label to reflect correct genre logic -->
+              <label for="song-genre" class="form-label">Custom Genre (only used if genre tag is missing from the file)</label>
+              <input type="text" class="form-control" id="song-genre" placeholder="Pop, Rock, J-Pop">
+            </div>
+            <button id="start-upload-btn" class="btn btn-danger">Start Upload</button>
+            <div id="upload-progress-area" class="mt-3"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', () => {
         'use strict';
@@ -1060,7 +1703,7 @@ function scan_music_directory($db) {
         const searchBtnMobile = document.getElementById('search-btn-mobile');
         const sortControls = document.getElementById('sort-controls');
         const sortSelect = document.getElementById('sort-select');
-        const navLinks = document.querySelectorAll('.nav-link');
+        const allNavLinks = document.querySelectorAll('.sidebar .nav-link');
         const scanBtn = document.getElementById('scan-btn');
         const scanStatusText = document.getElementById('scan-status-text');
         const scanProgressBar = document.getElementById('scan-progress-bar-container');
@@ -1070,9 +1713,6 @@ function scan_music_directory($db) {
         const progressBar = document.getElementById('progress-bar');
         const currentTimeEl = document.getElementById('current-time');
         const timeLeftEl = document.getElementById('time-left');
-        const importBtn = document.getElementById('import-btn');
-        const exportBtn = document.getElementById('export-btn');
-        const importFileInput = document.getElementById('import-file-input');
         const infiniteScrollLoader = document.getElementById('infinite-scroll-loader');
         const installPwaBtn = document.getElementById('install-pwa-btn');
 
@@ -1098,7 +1738,7 @@ function scan_music_directory($db) {
 
         const audio = new Audio();
         let currentView = { type: 'songs', param: '', sort: 'artist_asc' };
-        let favorites = [];
+        let currentUser = null;
         let currentSong = null;
         let queue = [];
         let originalQueue = [];
@@ -1108,10 +1748,11 @@ function scan_music_directory($db) {
         let repeatMode = 'none';
         let scanInterval;
         let deferredInstallPrompt = null;
+        let sortable = null;
         
         let currentPage = 1;
         let isLoadingMore = false;
-        let allSongsLoaded = false;
+        let allContentloaded = false;
 
         const ICONS = {
           play: `<i class="bi bi-play-fill"></i>`,
@@ -1126,7 +1767,7 @@ function scan_music_directory($db) {
         };
 
         const formatTime = (seconds) => {
-          if (isNaN(seconds)) return '0:00';
+          if (isNaN(seconds) || seconds < 0) return '0:00';
           const min = Math.floor(seconds / 60);
           const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
           return `${min}:${sec}`;
@@ -1134,21 +1775,64 @@ function scan_music_directory($db) {
 
         const fetchData = async (url, options = {}) => {
           try {
+            // By default, we don't want to cache API calls on the client side
+            // The service worker handles offline capability for static assets.
+            options.cache = 'no-store';
             const response = await fetch(url, options);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return await response.json();
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => null);
+              const message = errorData ? errorData.message : `HTTP error! status: ${response.status}`;
+              throw new Error(message);
+            }
+            if (response.headers.get("content-type")?.includes("application/json")) {
+              return await response.json();
+            }
+            return await response.text();
           } catch (error) {
-            console.error("Failed to load data from " + url, error);
-            contentArea.innerHTML = `<div class="alert alert-danger mx-3">Failed to load data. Please check server logs and console.</div>`;
+            console.error("Fetch error for " + url, error);
+            showToast(error.message, 'error');
             return null;
           }
         };
-        
-        const showLoader = () => {
-          contentArea.innerHTML = `<div class="loader">Loading...</div>`;
+
+        const showToast = (message, type = 'info') => {
+          const toastContainer = document.createElement('div');
+          toastContainer.className = `toast-container position-fixed bottom-0 end-0 p-3`;
+          toastContainer.style.zIndex = "1100";
+          const toastEl = document.createElement('div');
+          toastEl.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : 'success'} border-0`;
+          toastEl.setAttribute('role', 'alert');
+          toastEl.setAttribute('aria-live', 'assertive');
+          toastEl.setAttribute('aria-atomic', 'true');
+          toastEl.innerHTML = `<div class="d-flex"><div class="toast-body">${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>`;
+          
+          document.body.appendChild(toastContainer);
+          toastContainer.appendChild(toastEl);
+          
+          const toast = new bootstrap.Toast(toastEl);
+          toast.show();
+          toastEl.addEventListener('hidden.bs.toast', () => toastContainer.remove());
         };
         
-        const updateContentTitle = (text) => {
+        const showLoader = (isInitial = true) => {
+          if (isInitial) {
+            contentArea.innerHTML = `<div class="loader">Loading...</div>`;
+            contentTitle.classList.remove('d-none');
+          } else {
+            infiniteScrollLoader.classList.remove('d-none');
+          }
+        };
+
+        const hideLoader = () => {
+          infiniteScrollLoader.classList.add('d-none');
+        };
+        
+        const updateContentTitle = (text, show = true) => {
+          if (!show) {
+            contentTitle.classList.add('d-none');
+            return;
+          }
+          contentTitle.classList.remove('d-none');
           try {
             const decodedText = decodeURIComponent(text.replace(/\+/g, ' '));
             contentTitle.textContent = decodedText;
@@ -1158,40 +1842,36 @@ function scan_music_directory($db) {
             document.title = text + ' - PHP Music';
           }
         };
-
-        const loadFavorites = () => {
-          favorites = JSON.parse(localStorage.getItem('phpMusicFavorites')) || [];
-        };
-        const saveFavorites = () => {
-          localStorage.setItem('phpMusicFavorites', JSON.stringify(favorites));
-        };
-        const isFavorite = (songId) => favorites.includes(songId);
-        const toggleFavorite = (songId) => {
-          if (isFavorite(songId)) {
-            favorites = favorites.filter(id => id !== songId);
-          } else {
-            favorites.push(songId);
-          }
-          saveFavorites();
-          updateFavoriteIcons(songId);
-        };
-        const updateFavoriteIcons = (songId) => {
-          const isFav = isFavorite(songId);
-          const icon = isFav ? ICONS.heartFill : ICONS.heart;
-          if (currentSong && currentSong.id === songId) {
-            favoriteBtnDesktop.innerHTML = icon;
-            favoriteBtnDesktop.classList.toggle('active', isFav);
-          }
-        };
         
+        const renderViewDetailsHeader = (details, type) => {
+          const totalDurationFormatted = formatTime(details.total_duration);
+          const headerHTML = `
+            <div class="view-details-header">
+              <img src="${details.image_url}" alt="${details.name}">
+              <div class="view-details-header-info">
+                <div class="type">${type}</div>
+                <h2 class="name text-truncate text-truncate-width">${details.name}</h2>
+                <div class="stats">${details.song_count} songs &bull; ${totalDurationFormatted}</div>
+              </div>
+            </div>`;
+          contentArea.insertAdjacentHTML('afterbegin', headerHTML);
+        };
+
         const renderSongs = (songs, append = false) => {
-          if (!append) contentArea.innerHTML = '';
+          if (!append) {
+            if (!contentArea.querySelector('.view-details-header')) {
+              contentArea.innerHTML = '';
+            }
+            if (sortable) sortable.destroy();
+            sortable = null;
+          }
+
           if (!songs || songs.length === 0) {
             if (!append) {
-              contentArea.innerHTML = `<div class="text-center p-5 text-secondary">No songs found.</div>`;
+              contentArea.innerHTML += `<div class="text-center p-5 text-secondary">No songs found.</div>`;
             }
-            allSongsLoaded = true;
-            infiniteScrollLoader.classList.add('d-none');
+            allContentloaded = true;
+            hideLoader();
             return;
           }
 
@@ -1199,21 +1879,24 @@ function scan_music_directory($db) {
           if (!songList) {
             songList = document.createElement('div');
             songList.className = 'song-list';
-            songList.innerHTML = `<div class="song-list-header d-none d-md-grid">
+            const header = `<div class="song-list-header d-none d-md-grid">
               <div>#</div><div>Title</div><div>Artist</div><div>Album</div><div>Time</div><div></div>
             </div>`;
+            contentArea.insertAdjacentHTML('beforeend', header);
             contentArea.appendChild(songList);
           }
 
-          const songsHTML = songs.map((song) => `
+          const songsHTML = songs.map((song) => {
+            const safeTitle = song.title.replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+            return `
             <div class="song-item" data-song-id="${song.id}">
-              <img src="?action=get_image&id=${song.id}" class="song-thumb" loading="lazy" alt="${song.title}">
+              <img src="?action=get_image&id=${song.id}" class="song-thumb" loading="lazy" alt="${safeTitle}">
               <div class="song-title-wrapper"><div class="song-title">${song.title}</div></div>
               <div class="song-artist" data-artist="${encodeURIComponent(song.artist)}">${song.artist}</div>
               <div class="song-album" data-album="${encodeURIComponent(song.album)}">${song.album}</div>
               <div class="song-duration d-none d-md-block">${formatTime(song.duration)}</div>
               <div class="song-more">
-                <button class="more-btn" data-song-id="${song.id}" data-artist="${encodeURIComponent(song.artist)}" data-album="${encodeURIComponent(song.album)}">
+                <button class="more-btn" data-song-id="${song.id}" data-user-id="${song.user_id}" data-artist="${encodeURIComponent(song.artist)}" data-album="${encodeURIComponent(song.album)}">
                   <i class="bi bi-three-dots-vertical"></i>
                 </button>
               </div>
@@ -1222,148 +1905,212 @@ function scan_music_directory($db) {
                 <span class="song-duration-mobile">${formatTime(song.duration)}</span>
               </div>
             </div>
-          `).join('');
+          `}).join('');
           
           songList.insertAdjacentHTML('beforeend', songsHTML);
+
+          if (currentView.type === 'favorites' && currentView.sort === 'manual_order') {
+            sortable = Sortable.create(songList, {
+              animation: 150,
+              ghostClass: 'ghost',
+              onEnd: async (evt) => {
+                const songItems = Array.from(songList.querySelectorAll('.song-item'));
+                const newOrderIds = songItems.map(item => item.dataset.songId);
+                await fetchData('?action=update_favorite_order', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ids: newOrderIds })
+                });
+              }
+            });
+          }
         };
 
-        const renderGrid = (items, type) => {
+        const renderGrid = (items, type, append = false) => {
+          if (!append) contentArea.innerHTML = '';
           if (!items || items.length === 0) {
-            return `<div class="text-center p-5 text-secondary">No ${type}s found.</div>`;
+            if (!append) {
+              contentArea.innerHTML = `<div class="text-center p-5 text-secondary">No ${type}s found.</div>`;
+            }
+            allContentloaded = true;
+            hideLoader();
+            return;
           }
-          return `<div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 row-cols-xl-6 g-4">
-            ${items.map(item => {
-              const name = type === 'artists' ? item : item.album;
-              const subtext = type === 'albums' ? item.artist : null;
-              const imageId = type === 'albums' ? item.id : 0;
-              const dataType = type === 'artists' ? 'artist' : 'album';
-              return `<div class="col">
-                <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(name)}">
-                  <img src="?action=get_image&id=${imageId}" class="card-img-top rounded" alt="${name}" style="aspect-ratio: 1/1; object-fit: cover; background-color: var(--ytm-surface-2);">
-                  <div class="card-body px-0 py-2">
-                    <h5 class="card-title fs-6 fw-normal text-truncate">${name}</h5>
-                    ${subtext ? `<p class="card-text small text-secondary text-truncate">${subtext}</p>` : ''}
+
+          let grid = contentArea.querySelector('.row');
+          if (!grid) {
+            grid = document.createElement('div');
+            grid.className = 'row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 row-cols-xl-6 g-4';
+            contentArea.appendChild(grid);
+          }
+
+          const itemsHTML = items.map(item => {
+              const name = (typeof item === 'object') ? item.album : item;
+              const subtext = (typeof item === 'object') ? item.artist : null;
+              const imageId = (typeof item === 'object') ? item.id : null;
+              const dataType = type.slice(0, -1);
+              const icon = (type === 'artists') ? 'bi-person-fill' : (type === 'genres') ? 'bi-tag-fill' : '';
+              
+              if (type === 'albums') {
+                return `<div class="col">
+                  <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(name)}" style="cursor: pointer;">
+                    <img src="?action=get_image&id=${imageId}" class="card-img-top rounded" alt="${name}" style="aspect-ratio: 1/1; object-fit: cover; background-color: var(--ytm-surface-2);">
+                    <div class="card-body px-0 py-2">
+                      <h5 class="card-title fs-6 fw-normal text-truncate">${name}</h5>
+                      ${subtext ? `<p class="card-text small text-secondary text-truncate">${subtext}</p>` : ''}
+                    </div>
                   </div>
-                </div>
-              </div>`;
-            }).join('')}
-          </div>`;
+                </div>`;
+              } else {
+                return `<div class="col">
+                  <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(name)}" style="cursor: pointer;">
+                    <div class="d-flex align-items-center justify-content-center rounded" style="aspect-ratio: 1/1; background-color: var(--ytm-surface-2);">
+                      <i class="bi ${icon}" style="font-size: 4rem; color: var(--ytm-secondary-text);"></i>
+                    </div>
+                    <div class="card-body px-0 py-2">
+                      <h5 class="card-title fs-6 fw-normal text-truncate">${name}</h5>
+                    </div>
+                  </div>
+                </div>`;
+              }
+            }).join('');
+          
+          grid.insertAdjacentHTML('beforeend', itemsHTML);
         };
         
         const setupSortOptions = (viewType) => {
           sortControls.classList.add('d-none');
-          // Search view should NOT have sort options
-          if (['songs', 'favorites', 'artist_songs'].includes(viewType)) {
+          if (['songs', 'favorites', 'artist_songs', 'album_songs', 'genre_songs', 'profile_songs', 'search'].includes(viewType)) {
             let options = {
               'artist_asc': 'Artist', 'title_asc': 'Title', 'album_asc': 'Album',
               'year_desc': 'Year (Newest)', 'year_asc': 'Year (Oldest)',
             };
-            if (viewType === 'artist_songs') {
-              delete options.artist_asc;
+            if (viewType === 'favorites') {
+              options = { 'manual_order': 'My Order', ...options };
             }
+            if (viewType === 'artist_songs') delete options.artist_asc;
+            if (viewType === 'album_songs') {
+              delete options.artist_asc;
+              delete options.album_asc;
+            }
+
             sortSelect.innerHTML = Object.entries(options)
               .map(([value, text]) => `<option value="${value}" ${currentView.sort === value ? 'selected' : ''}>${text}</option>`).join('');
             sortControls.classList.remove('d-none');
           }
         };
 
-        const loadMoreSongs = async () => {
-          if (isLoadingMore || allSongsLoaded) return;
+        const loadMoreContent = async () => {
+          if (isLoadingMore || allContentloaded) return;
           isLoadingMore = true;
-          infiniteScrollLoader.classList.remove('d-none');
+          showLoader(false);
           
           currentPage++;
-          let url;
-          let options = {};
-          const {type, param, sort} = currentView;
-
-          switch (type) {
+          let url, data;
+          const { type, param, sort } = currentView;
+          
+          switch(type) {
             case 'songs':
-              url = `?action=get_songs&sort=${sort}&page=${currentPage}`;
+            case 'artist_songs':
+            case 'album_songs':
+            case 'genre_songs':
+              let filter = type.endsWith('_songs') ? `&${type.split('_')[0]}=${encodeURIComponent(param)}` : '';
+              url = `?action=get_songs&page=${currentPage}&sort=${sort}${filter}`;
+              data = await fetchData(url);
+              renderSongs(data, true);
+              break;
+            case 'profile_songs':
+              url = `?action=get_profile_songs&page=${currentPage}&sort=${sort}`;
+              data = await fetchData(url);
+              renderSongs(data, true);
               break;
             case 'favorites':
-              url = `?action=get_favorites&page=${currentPage}`;
-              options = { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ids: favorites }) };
-              break;
-            case 'artist_songs':
-              url = `?action=get_by_artist&name=${encodeURIComponent(param)}&sort=${sort}&page=${currentPage}`;
+              url = `?action=get_favorites&page=${currentPage}&sort=${sort}`;
+              data = await fetchData(url);
+              renderSongs(data, true);
               break;
             case 'search':
-              // Search has no sort parameter. It's fixed.
               url = `?action=search&q=${encodeURIComponent(param)}&page=${currentPage}`;
+              data = await fetchData(url);
+              renderSongs(data, true);
+              break;
+            case 'albums':
+            case 'artists':
+            case 'genres':
+              url = `?action=get_${type}&page=${currentPage}`;
+              data = await fetchData(url);
+              renderGrid(data, type, true);
               break;
             default:
-              isLoadingMore = false;
-              infiniteScrollLoader.classList.add('d-none');
-              return;
-          }
-
-          const data = await fetchData(url, options);
-          if (data && data.length > 0) {
-            renderSongs(data, true);
-          } else {
-            allSongsLoaded = true;
+              allContentloaded = true;
           }
           
+          if (!data || data.length < 25) {
+            allContentloaded = true;
+          }
+
           isLoadingMore = false;
-          infiniteScrollLoader.classList.add('d-none');
+          hideLoader();
         };
 
         const loadView = async (viewConfig) => {
           mainContent.scrollTop = 0;
           currentPage = 1;
-          allSongsLoaded = false;
+          allContentloaded = false;
           isLoadingMore = false;
           showLoader();
 
           currentView = viewConfig;
           setupSortOptions(currentView.type);
 
-          let url, data, options = {};
+          let data;
+          let viewName = currentView.type.charAt(0).toUpperCase() + currentView.type.slice(1);
+          
           switch (currentView.type) {
             case 'songs':
               updateContentTitle('All Songs');
-              url = `?action=get_songs&sort=${currentView.sort}&page=1`;
-              data = await fetchData(url);
+              data = await fetchData(`?action=get_songs&sort=${currentView.sort}&page=1`);
+              renderSongs(data, false);
+              break;
+            case 'profile_songs':
+              updateContentTitle('My Music');
+              data = await fetchData(`?action=get_profile_songs&sort=${currentView.sort}&page=1`);
+              renderSongs(data, false);
               break;
             case 'favorites':
               updateContentTitle('Favorites');
-              if (favorites.length === 0) {
-                data = [];
-              } else {
-                url = `?action=get_favorites&page=1`;
-                options = { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ids: favorites }) };
-                data = await fetchData(url, options);
-              }
+              data = await fetchData(`?action=get_favorites&sort=${currentView.sort}&page=1`);
+              renderSongs(data, false);
               break;
             case 'albums':
-              updateContentTitle('Albums');
-              data = await fetchData(`?action=get_albums`);
-              break;
             case 'artists':
-              updateContentTitle('Artists');
-              data = await fetchData(`?action=get_artists`);
+            case 'genres':
+              updateContentTitle(viewName);
+              data = await fetchData(`?action=get_${currentView.type}&page=1`);
+              renderGrid(data, currentView.type, false);
               break;
             case 'artist_songs':
-              updateContentTitle(currentView.param);
-              url = `?action=get_by_artist&name=${encodeURIComponent(currentView.param)}&sort=${currentView.sort}&page=1`;
-              data = await fetchData(url);
-              break;
             case 'album_songs':
-              updateContentTitle(currentView.param);
-              data = await fetchData(`?action=get_by_album&name=${encodeURIComponent(currentView.param)}&page=1`);
+            case 'genre_songs':
+              const type = currentView.type.split('_')[0];
+              const name = decodeURIComponent(currentView.param);
+              updateContentTitle(name, false);
+              const details = await fetchData(`?action=get_view_details&type=${type}&name=${encodeURIComponent(name)}`);
+              contentArea.innerHTML = '';
+              if (details) renderViewDetailsHeader(details, type);
+              data = await fetchData(`?action=get_songs&${type}=${currentView.param}&sort=${currentView.sort}&page=1`);
+              renderSongs(data, false);
               break;
             case 'search':
               updateContentTitle(`Search: "${currentView.param}"`);
-              url = `?action=search&q=${encodeURIComponent(currentView.param)}&page=1`;
-              data = await fetchData(url);
+              data = await fetchData(`?action=search&q=${encodeURIComponent(currentView.param)}&page=1`);
+              renderSongs(data, false);
               break;
           }
 
-          if (['songs', 'artist_songs', 'album_songs', 'search', 'favorites'].includes(currentView.type)) {
-             renderSongs(data, false);
-          } else if (['albums', 'artists'].includes(currentView.type)) {
-             contentArea.innerHTML = renderGrid(data, currentView.type);
+          if (!data || data.length < 25) {
+            allContentloaded = true;
+            hideLoader();
           }
         };
 
@@ -1378,8 +2125,12 @@ function scan_music_directory($db) {
           if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
               title: currentSong.title, artist: currentSong.artist, album: currentSong.album,
-              artwork: [{ src: currentSong.image_url, sizes: '512x512', type: 'image/webp' }]
+              artwork: [{ src: currentSong.image_url, sizes: '250x250', type: 'image/webp' }]
             });
+            navigator.mediaSession.setActionHandler('play', togglePlayPause);
+            navigator.mediaSession.setActionHandler('pause', togglePlayPause);
+            navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+            navigator.mediaSession.setActionHandler('nexttrack', playNext);
           }
         };
 
@@ -1395,7 +2146,7 @@ function scan_music_directory($db) {
           [playerArtistDesktop, playerArtistMobile].forEach(el => el.textContent = currentSong.artist);
           document.title = `${currentSong.title} • ${currentSong.artist}`;
           updatePlayPauseIcons();
-          updateFavoriteIcons(currentSong.id);
+          updateFavoriteIcons(currentSong.is_favorite);
         };
 
         const updatePlayPauseIcons = () => {
@@ -1404,6 +2155,9 @@ function scan_music_directory($db) {
             btn.innerHTML = icon;
             btn.title = isPlaying ? "Pause" : "Play";
           });
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+          }
         };
         
         const updateRepeatIcons = () => {
@@ -1427,18 +2181,61 @@ function scan_music_directory($db) {
             btn.title = isShuffle ? "Shuffle On" : "Shuffle Off";
           });
         };
+        
+        const updateFavoriteIcons = (isFav) => {
+          const icon = isFav ? ICONS.heartFill : ICONS.heart;
+          favoriteBtnDesktop.innerHTML = icon;
+          favoriteBtnDesktop.classList.toggle('active', isFav);
+        };
+        
+        const toggleFavorite = async (songId) => {
+          if (!currentUser) {
+            showToast('Please log in to add favorites.', 'error');
+            return;
+          }
+          const result = await fetchData('?action=toggle_favorite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: songId })
+          });
+          if (result) {
+            if (currentSong && currentSong.id === songId) {
+              currentSong.is_favorite = result.is_favorite;
+              updateFavoriteIcons(result.is_favorite);
+            }
+            if (currentView.type === 'favorites') {
+              // A small delay to allow the toast to show before reloading the view
+              setTimeout(() => loadView(currentView), 100);
+            }
+            showToast(result.status === 'added' ? 'Added to favorites' : 'Removed from favorites', 'success');
+          }
+        };
 
-        const showContextMenu = (e, buttonEl) => {
+        const showContextMenu = async (e, buttonEl) => {
           e.preventDefault(); e.stopPropagation();
           const songId = parseInt(buttonEl.dataset.songId);
+          const songUserId = parseInt(buttonEl.dataset.userId);
           const { artist, album } = buttonEl.dataset;
-          const favText = isFavorite(songId) ? "Remove from Favorites" : "Add to Favorites";
-          const favIcon = isFavorite(songId) ? ICONS.heartFill : ICONS.heart;
-          contextMenu.innerHTML = `
+          
+          let menuItems = `
             <li class="context-menu-item" data-action="go_artist" data-name="${artist}"><i class="bi bi-person-fill"></i> Go to Artist</li>
-            <li class="context-menu-item" data-action="go_album" data-name="${album}"><i class="bi bi-disc-fill"></i> Go to Album</li>
-            <li class="context-menu-item" data-action="toggle_favorite" data-id="${songId}">${favIcon} ${favText}</li>
-          `;
+            <li class="context-menu-item" data-action="go_album" data-name="${album}"><i class="bi bi-disc-fill"></i> Go to Album</li>`;
+          
+          if (currentUser) {
+            const songData = await fetchData(`?action=get_song_data&id=${songId}`);
+            if (songData) {
+              const favText = songData.is_favorite ? "Remove from Favorites" : "Add to Favorites";
+              const favIcon = songData.is_favorite ? ICONS.heartFill : ICONS.heart;
+              menuItems += `<li class="context-menu-item" data-action="toggle_favorite" data-id="${songId}">${favIcon} ${favText}</li>`;
+              menuItems += `<li class="context-menu-item" data-action="download_song" data-id="${songId}"><i class="bi bi-download"></i> Download Song</li>`;
+              if (currentUser.id === songUserId || currentUser.artist === 'Music Library') {
+                // FIX: Added Edit Genre option
+                menuItems += `<li class="context-menu-item" data-action="edit_genre" data-id="${songId}"><i class="bi bi-tag-fill"></i> Edit Genre</li>`;
+                menuItems += `<li class="context-menu-item text-danger" data-action="delete_song" data-id="${songId}"><i class="bi bi-trash-fill"></i> Delete Song</li>`;
+              }
+            }
+          }
+          contextMenu.innerHTML = menuItems;
           contextMenu.style.display = 'block';
           const rect = buttonEl.getBoundingClientRect();
           const menuWidth = contextMenu.offsetWidth;
@@ -1484,8 +2281,8 @@ function scan_music_directory($db) {
 
         const toggleShuffle = () => {
           isShuffle = !isShuffle;
-          if (queue.length > 0) {
-            const currentSongId = queue[queueIndex];
+          if (queue.length > 0 && currentSong) {
+            const currentSongId = currentSong.id;
             if (isShuffle) {
               queue = [...originalQueue];
               for (let i = queue.length - 1; i > 0; i--) {
@@ -1502,10 +2299,12 @@ function scan_music_directory($db) {
             queueIndex = queue.findIndex(id => id === currentSongId);
           }
           updateShuffleButtons();
+          showToast(isShuffle ? 'Shuffle enabled' : 'Shuffle disabled', 'info');
         };
 
+        // This function builds the correct playback queue based on the current view (All Songs, Album, Artist, etc.)
+        // and starts playing the selected song.
         const setQueueAndPlay = async (startId) => {
-          // Use the current view state to fetch the correct list of IDs for the queue
           const allIds = await fetchData('?action=get_view_ids', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1513,54 +2312,55 @@ function scan_music_directory($db) {
               view_type: currentView.type,
               param: currentView.param,
               sort: currentView.sort,
-              ids: currentView.type === 'favorites' ? favorites : []
             })
           });
 
-          if (!allIds || allIds.length === 0) {
-            console.error("Could not fetch queue.");
-            return;
-          }
+          if (!allIds || allIds.length === 0) { return; }
 
           originalQueue = allIds;
           queue = [...originalQueue];
-          if (isShuffle) { toggleShuffle(); toggleShuffle(); }
+          if (isShuffle) { 
+             isShuffle = false; toggleShuffle(); // Reshuffle the new queue
+          }
           queueIndex = queue.findIndex(id => id === startId);
           if (queueIndex === -1) { return; }
           playSongById(startId);
         };
 
-        navLinks.forEach(link => link.addEventListener('click', e => {
-          e.preventDefault();
-          const targetId = e.currentTarget.id;
-          if (['scan-btn', 'import-btn', 'export-btn', 'install-pwa-btn'].includes(targetId)) return;
-          navLinks.forEach(l => l.classList.remove('active'));
-          e.currentTarget.classList.add('active');
-          loadView({ type: e.currentTarget.dataset.view, param: '', sort: 'artist_asc' });
-          const offcanvasEl = document.getElementById('main-nav-offcanvas');
-          if (window.innerWidth < 768 && offcanvasEl) {
-            const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
-            if (offcanvas) offcanvas.hide();
-          }
-        }));
+        allNavLinks.forEach(link => {
+          if (link.id === 'logout-btn' || link.id === 'scan-btn' || link.getAttribute('data-bs-toggle') === 'modal' || link.id === 'install-pwa-btn') return;
+          link.addEventListener('click', e => {
+            e.preventDefault();
+            const navLink = e.currentTarget;
+            allNavLinks.forEach(l => l.classList.remove('active'));
+            navLink.classList.add('active');
+            
+            const viewType = navLink.dataset.view;
+            let sort = 'artist_asc';
+            if (viewType === 'favorites') sort = 'manual_order';
+            if (viewType === 'profile_songs') sort = 'title_asc';
+
+            loadView({ type: viewType, param: '', sort: sort });
+            const offcanvasEl = document.getElementById('main-nav-offcanvas');
+            if (window.innerWidth < 768 && offcanvasEl) {
+              const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
+              if (offcanvas) offcanvas.hide();
+            }
+          });
+        });
 
         const performSearch = (query) => {
-            if (query.trim() !== '') {
-                loadView({ type: 'search', param: query.trim() });
-            }
+          if (query.trim() !== '') {
+            loadView({ type: 'search', param: query.trim(), sort: 'artist_asc' });
+          }
         };
-
-        searchInputDesktop.addEventListener('keyup', (e) => {
-            if (e.key === 'Enter') performSearch(e.target.value);
-        });
-        searchInputMobile.addEventListener('keyup', (e) => {
-            if (e.key === 'Enter') performSearch(e.target.value);
-        });
+        searchInputDesktop.addEventListener('keyup', (e) => { if (e.key === 'Enter') performSearch(e.target.value); });
+        searchInputMobile.addEventListener('keyup', (e) => { if (e.key === 'Enter') performSearch(e.target.value); });
         searchBtnDesktop.addEventListener('click', () => performSearch(searchInputDesktop.value));
         searchBtnMobile.addEventListener('click', () => performSearch(searchInputMobile.value));
 
         sortSelect.addEventListener('change', (e) => {
-          loadView({ type: currentView.type, param: currentView.param, sort: e.target.value });
+          loadView({ ...currentView, sort: e.target.value });
         });
 
         scanBtn.addEventListener('click', e => {
@@ -1577,9 +2377,13 @@ function scan_music_directory($db) {
               scanBtn.classList.remove('scanning');
               scanProgressBar.classList.add('d-none');
               scanStatusText.textContent = data.message;
-              setTimeout(() => loadView({ type: 'songs', param: '', sort: 'artist_asc' }), 1000);
+              showToast(data.message, data.status === 'error' ? 'error' : 'success');
+              if (currentView.type === 'songs') {
+                loadView(currentView);
+              }
+            } else if (data) {
+              scanStatusText.textContent = data.message;
             }
-            if (data) scanStatusText.textContent = data.message;
           }, 2000);
         });
         
@@ -1591,9 +2395,9 @@ function scan_music_directory($db) {
           repeatMode = (repeatMode === 'none') ? 'all' : (repeatMode === 'all') ? 'one' : 'none';
           updateRepeatIcons();
         }));
-        [favoriteBtnDesktop].forEach(btn => btn.addEventListener('click', () => {
+        favoriteBtnDesktop.addEventListener('click', () => {
           if (currentSong) toggleFavorite(currentSong.id);
-        }));
+        });
 
         contentArea.addEventListener('click', e => {
           const target = e.target;
@@ -1605,23 +2409,40 @@ function scan_music_directory($db) {
           const songArtistEl = target.closest('.song-artist');
           if (songArtistEl) {
             e.stopPropagation();
-            loadView({ type: 'artist_songs', param: decodeURIComponent(songArtistEl.dataset.artist), sort: 'album_asc' });
+            loadView({ type: 'artist_songs', param: songArtistEl.dataset.artist, sort: 'album_asc' });
             return;
           }
           const songAlbumEl = target.closest('.song-album');
           if (songAlbumEl) {
             e.stopPropagation();
-            loadView({ type: 'album_songs', param: decodeURIComponent(songAlbumEl.dataset.album) });
+            loadView({ type: 'album_songs', param: songAlbumEl.dataset.album, sort: 'title_asc' });
             return;
+          }
+          const cardEl = target.closest('.card');
+          if (cardEl) {
+             let viewType, param, sort;
+             if (cardEl.dataset.artist) {
+               viewType = 'artist_songs';
+               param = cardEl.dataset.artist;
+               sort = 'album_asc';
+             } else if (cardEl.dataset.album) {
+               viewType = 'album_songs';
+               param = cardEl.dataset.album;
+               sort = 'title_asc';
+             } else if (cardEl.dataset.genre) {
+               viewType = 'genre_songs';
+               param = cardEl.dataset.genre;
+               sort = 'artist_asc';
+             }
+             if (viewType) {
+               loadView({ type: viewType, param: param, sort: sort });
+             }
+             return;
           }
           const songItem = target.closest('.song-item');
           if (songItem) {
             const songId = parseInt(songItem.dataset.songId);
             setQueueAndPlay(songId);
-          } else if (target.closest('[data-artist]')) {
-            loadView({ type: 'artist_songs', param: decodeURIComponent(target.closest('[data-artist]').dataset.artist), sort: 'album_asc' });
-          } else if (target.closest('[data-album]')) {
-            loadView({ type: 'album_songs', param: decodeURIComponent(target.closest('[data-album]').dataset.album) });
           }
         });
         
@@ -1629,15 +2450,56 @@ function scan_music_directory($db) {
           if (!contextMenu.contains(e.target)) contextMenu.style.display = 'none';
         });
 
-        contextMenu.addEventListener('click', e => {
+        contextMenu.addEventListener('click', async e => {
           const item = e.target.closest('.context-menu-item');
           if (!item) return;
           const { action, name, id } = item.dataset;
-          const decodedName = name ? decodeURIComponent(name) : '';
-          if (action === 'go_artist') loadView({ type: 'artist_songs', param: decodedName, sort: 'album_asc' });
-          else if (action === 'go_album') loadView({ type: 'album_songs', param: decodedName });
-          else if (action === 'toggle_favorite') toggleFavorite(parseInt(id));
           contextMenu.style.display = 'none';
+
+          switch (action) {
+            case 'go_artist':
+              loadView({ type: 'artist_songs', param: name, sort: 'album_asc' });
+              break;
+            case 'go_album':
+              loadView({ type: 'album_songs', param: name, sort: 'title_asc' });
+              break;
+            case 'toggle_favorite':
+              toggleFavorite(parseInt(id));
+              break;
+            case 'edit_genre':
+              const songIdToEdit = parseInt(id);
+              const songData = await fetchData(`?action=get_song_data&id=${songIdToEdit}`);
+              if (!songData) break;
+              const newGenre = prompt("Enter the new genre for this song:", songData.genre || "");
+              if (newGenre !== null && newGenre.trim() !== '') {
+                  const result = await fetchData('?action=edit_genre', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id: songIdToEdit, genre: newGenre.trim() })
+                  });
+                  if (result && result.status === 'success') {
+                      showToast('Genre updated!', 'success');
+                      loadView(currentView);
+                  }
+              }
+              break;
+            case 'download_song':
+              window.location.href = `?action=download_song&id=${id}`;
+              break;
+            case 'delete_song':
+              if (confirm('Are you sure you want to delete this song? This cannot be undone.')) {
+                const result = await fetchData('?action=delete_song', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: parseInt(id) })
+                });
+                if (result.status === 'success') {
+                  showToast('Song deleted successfully.', 'success');
+                  loadView(currentView);
+                }
+              }
+              break;
+          }
         });
 
         audio.addEventListener('timeupdate', () => {
@@ -1663,47 +2525,10 @@ function scan_music_directory($db) {
           const percent = Math.max(0, Math.min(1, (e.clientX - bounds.left) / bounds.width));
           audio.currentTime = percent * audio.duration;
         });
-
-        importBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          importFileInput.click();
-        });
-        exportBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(favorites));
-          const downloadAnchorNode = document.createElement('a');
-          downloadAnchorNode.setAttribute("href", dataStr);
-          downloadAnchorNode.setAttribute("download", "favorites.json");
-          document.body.appendChild(downloadAnchorNode);
-          downloadAnchorNode.click();
-          downloadAnchorNode.remove();
-        });
-        importFileInput.addEventListener('change', (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = function(event) {
-            try {
-              const importedFavorites = JSON.parse(event.target.result);
-              if (Array.isArray(importedFavorites) && importedFavorites.every(i => typeof i === 'number')) {
-                favorites = importedFavorites;
-                saveFavorites();
-                alert('Favorites imported successfully!');
-                loadView(currentView);
-              } else {
-                alert('Invalid favorites file format.');
-              }
-            } catch (err) {
-              alert('Error reading favorites file.');
-            }
-          };
-          reader.readAsText(file);
-          e.target.value = '';
-        });
         
         mainContent.addEventListener('scroll', () => {
-          if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 200) {
-            loadMoreSongs();
+          if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 300) {
+            loadMoreContent();
           }
         });
 
@@ -1715,28 +2540,174 @@ function scan_music_directory($db) {
 
         installPwaBtn.addEventListener('click', async (e) => {
           e.preventDefault();
-          if (!deferredInstallPrompt) {
-            return;
-          }
+          if (!deferredInstallPrompt) return;
           deferredInstallPrompt.prompt();
-          const { outcome } = await deferredInstallPrompt.userChoice;
+          await deferredInstallPrompt.userChoice;
           deferredInstallPrompt = null;
           installPwaBtn.classList.add('d-none');
         });
         
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const changePwForm = document.getElementById('change-password-form');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        loginForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const email = document.getElementById('login-email').value;
+          const password = document.getElementById('login-password').value;
+          const data = await fetchData('?action=login', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ email, password })
+          });
+          if (data && data.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('login-modal')).hide();
+            loginForm.reset();
+            showToast('Login successful!', 'success');
+            await checkSession();
+          }
+        });
+
+        registerForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const email = document.getElementById('register-email').value;
+          const artist = document.getElementById('register-artist').value;
+          const password = document.getElementById('register-password').value;
+          const data = await fetchData('?action=register', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ email, artist, password })
+          });
+          if (data && data.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('register-modal')).hide();
+            registerForm.reset();
+            showToast(data.message, 'success');
+          }
+        });
+
+        logoutBtn.addEventListener('click', async e => {
+          e.preventDefault();
+          await fetchData('?action=logout');
+          currentUser = null;
+          updateUIForAuthState();
+          loadView({ type: 'songs', param: '', sort: 'artist_asc' });
+        });
+
+        changePwForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const new_password = document.getElementById('new-password').value;
+          const data = await fetchData('?action=change_password', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ new_password })
+          });
+          if(data && data.status === 'success') {
+            bootstrap.Modal.getInstance(document.getElementById('settings-modal')).hide();
+            changePwForm.reset();
+            showToast(data.message, 'success');
+          }
+        });
+
+        const uploadLimitText = document.getElementById('upload-limit-text');
+        const songFilesInput = document.getElementById('song-files');
+        const songGenreInput = document.getElementById('song-genre');
+        const startUploadBtn = document.getElementById('start-upload-btn');
+        const uploadProgressArea = document.getElementById('upload-progress-area');
+        let filesToUpload = [];
+
+        songFilesInput.addEventListener('change', () => { filesToUpload = Array.from(songFilesInput.files); });
+        
+        startUploadBtn.addEventListener('click', async () => {
+          if (filesToUpload.length === 0) {
+            showToast('Please select files to upload.', 'error'); return;
+          }
+          startUploadBtn.disabled = true;
+          uploadProgressArea.innerHTML = '';
+
+          for (let i = 0; i < filesToUpload.length; i++) {
+            const file = filesToUpload[i];
+            const progressId = `progress-${i}`;
+            uploadProgressArea.innerHTML += `
+              <div class="mb-2">
+                <small>${file.name}</small>
+                <div class="progress"><div id="${progressId}" class="progress-bar" role="progressbar" style="width: 0%">0%</div></div>
+              </div>`;
+
+            const formData = new FormData();
+            formData.append('song', file);
+            formData.append('genre', songGenreInput.value);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '?action=upload_song', true);
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                const percentComplete = Math.round((e.loaded / e.total) * 100);
+                const progressBar = document.getElementById(progressId);
+                progressBar.style.width = `${percentComplete}%`;
+                progressBar.textContent = `${percentComplete}%`;
+              }
+            };
+            
+            await new Promise(resolve => {
+              xhr.onload = () => {
+                const progressBar = document.getElementById(progressId);
+                if (xhr.status === 200) {
+                  progressBar.classList.add('bg-success');
+                } else {
+                  progressBar.classList.add('bg-danger');
+                  progressBar.textContent = 'Error';
+                  try {
+                    showToast(`Upload failed for ${file.name}: ${JSON.parse(xhr.responseText).message}`, 'error');
+                  } catch(e) {
+                     showToast(`Upload failed for ${file.name}: Server error.`, 'error');
+                  }
+                }
+                resolve();
+              };
+              xhr.onerror = () => {
+                document.getElementById(progressId).classList.add('bg-danger');
+                document.getElementById(progressId).textContent = 'Error';
+                showToast(`A network error occurred during upload of ${file.name}.`, 'error');
+                resolve();
+              };
+              xhr.send(formData);
+            });
+          }
+          startUploadBtn.disabled = false;
+          showToast('All uploads complete.', 'success');
+          loadView(currentView);
+          filesToUpload = [];
+          songFilesInput.value = '';
+          songGenreInput.value = '';
+        });
+
+        function updateUIForAuthState() {
+          document.body.classList.toggle('logged-in', !!currentUser);
+          document.body.classList.toggle('logged-out', !currentUser);
+        }
+
+        async function checkSession() {
+          const data = await fetchData('?action=get_session');
+          if (data && data.status === 'loggedin') {
+            currentUser = data.user;
+            uploadLimitText.textContent = data.upload_limit;
+          } else {
+            currentUser = null;
+          }
+          updateUIForAuthState();
+          loadView({ type: 'songs', param: '', sort: 'artist_asc' });
+        }
+
         const init = () => {
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('?pwa=sw');
+            navigator.serviceWorker.register('?pwa=sw').catch(err => console.error('SW registration failed:', err));
           }
           [prevBtnDesktop, prevBtnMobile].forEach(b => b.innerHTML = ICONS.prev);
           [nextBtnDesktop, nextBtnMobile].forEach(b => b.innerHTML = ICONS.next);
           [shuffleBtnDesktop, shuffleBtnMobile].forEach(b => b.innerHTML = ICONS.shuffle);
           favoriteBtnDesktop.innerHTML = ICONS.heart;
-          loadFavorites();
           updatePlayPauseIcons();
           updateRepeatIcons();
           updateShuffleButtons();
-          loadView({ type: 'songs', param: '', sort: 'artist_asc' });
+          checkSession();
         };
 
         init();
