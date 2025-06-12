@@ -1,27 +1,29 @@
 # PHP Music Player
 
-A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, organize your library, and now also enjoy features like user accounts and uploading your own songs!
+A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, organize, upload, and manage your own library with user accounts.
 
-![Screenshot](https://github.com/user-attachments/assets/9878068a-7ea0-4630-bdda-dff7c72e76f3)
-![Screenshot](https://github.com/user-attachments/assets/5f8c05ae-abc7-484b-a805-2323311cab6a)
+![f14d2db43f7d_i0](https://github.com/user-attachments/assets/c982c7a3-b12d-4e86-b8a1-f3820c08e02f)
+![f14d2db43f7d_i1](https://github.com/user-attachments/assets/8e65a4a2-aa3f-47a2-9d73-bb91a431f9af)
+
 
 ## Features
 
-- 🎵 **Scan Local Music**: Recursively scans your directory for `mp3`, `m4a`, `flac`, `ogg`, and `wav` files.
+- 🎵 **Scan Local Music**: Recursively scans your directory for `mp3`, `m4a`, `flac`, `ogg`, and `wav` files (excluding uploads).
 - 🏷️ **Automatic Metadata**: Uses [getID3](https://github.com/JamesHeinrich/getID3) to extract artist, album, year, genre, and cover images.
-- 📚 **Library Management**: Browse by songs, artists, albums, genres, or favorites. Search instantly.
-- ❤️ **Favorites**: Mark/unmark songs as favorites (with custom order, stored per user). Import/export supported.
-- 🔊 **Player**: Supports play, pause, next/prev, repeat, shuffle, seeking, and displays cover art.
-- 🖼️ **Album Art**: Displays embedded images as `.webp` (fallback to SVG icon if missing).
-- 📱 **Responsive UI**: Works great on desktop and mobile.
-- ⚡ **PWA**: Install as an app on your phone or desktop. Works offline (caches assets & some API).
+- 📚 **Library Management**: Browse by songs, artists, albums, genres, or favorites. Instant search included.
+- ❤️ **Favorites**: Mark/unmark songs as favorites (custom order, stored per user). Drag to reorder. Import/export supported.
+- 🔊 **Player**: Play, pause, next/prev, repeat, shuffle, seeking, and cover art display. In-browser playback via HTML5 `<audio>`.
+- 🖼️ **Album Art**: Displays embedded images as `.webp` (SVG fallback if missing).
+- 📱 **Responsive UI**: Fully responsive, with a mobile-optimized layout.
+- ⚡ **PWA Support**: Install as an app on your phone or desktop. Works offline (caches assets & some API). Manifest & service worker included.
 - 🚀 **No Database Setup**: Uses SQLite, auto-initialized on first run.
-- 👤 **User Accounts**: Register/login, each user can upload their own music, manage their own favorites, and delete/edit their own uploads.
-- ☁️ **Upload Music**: Users can upload new songs (with genre support and embedded metadata extraction).
-- 🏷️ **Edit Genre**: Song genre can be edited directly from the context menu.
-- 🗑️ **Delete Songs**: Users can delete their own uploaded songs from the UI or context menu.
-- ⬇️ **Download Songs**: Download your uploaded music directly from the context menu.
+- 👤 **User Accounts**: Register/login. Each user can upload their own music, manage their own favorites, and delete/edit their own uploads.
+- ☁️ **Upload Music**: Upload new songs (multi-file, genre auto-detected from file/tag or custom). Embedded metadata extraction.
+- 🏷️ **Edit Genre**: Change genre from the context menu.
+- 🗑️ **Delete Songs**: Delete your own uploads from the UI/context menu.
+- ⬇️ **Download Songs**: Download your uploads directly from the context menu.
 - 🔐 **Session Security**: All write actions require login.
+- 🛠️ **Settings**: Change password and manage your account.
 
 ## Demo
 
@@ -29,44 +31,37 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 
 ## Requirements
 
-- PHP 7.4+ with `pdo_sqlite`, `gd`, and `mbstring` extensions.
-- [getID3 library](https://github.com/JamesHeinrich/getID3) (just extract to a `getid3` folder).
+- PHP 7.4+ with `pdo_sqlite`, `gd`, and `mbstring` extensions enabled.
+- [getID3 library](https://github.com/JamesHeinrich/getID3) (extract to a `getid3` folder inside the project).
 - A folder full of music files!
 
 ## How to Activate SQLite in XAMPP/LAMPP
 
-If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite, you may need to enable the SQLite extension:
+If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 
 ### For XAMPP (Windows/macOS/Linux)
 
-1. Open your `php.ini` file.  
-   - Usually found in `xampp/php/php.ini`.
-
-2. Search for the following lines and ensure they are **not** commented (remove the leading semicolon `;` if present):
+1. Open your `php.ini` file (usually found in `xampp/php/php.ini`).
+2. Ensure these lines are **not** commented (remove the leading semicolon `;` if present):
 
     ```
     extension=pdo_sqlite
     extension=sqlite3
     ```
 
-3. Save the `php.ini` file.
-
-4. **Restart Apache** using the XAMPP control panel for changes to take effect.
+3. Save and restart Apache using the XAMPP control panel.
 
 ### For LAMPP (Linux)
 
-1. Open your `php.ini` file located at `/opt/lampp/etc/php.ini`.
-
-2. Find and ensure these lines are enabled (no leading semicolon):
+1. Open `/opt/lampp/etc/php.ini`.
+2. Ensure:
 
     ```
     extension=pdo_sqlite
     extension=sqlite3
     ```
 
-3. Save the file.
-
-4. Restart Apache:
+3. Save and restart Apache:
 
     ```bash
     sudo /opt/lampp/lampp restart
@@ -74,11 +69,12 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite, you ma
 
 ### Verify SQLite is enabled
 
-- Create a `phpinfo.php` file with:
+- Create a `phpinfo.php` file:
+
     ```php
     <?php phpinfo(); ?>
     ```
-- Open it in your browser and search for "sqlite" or "PDO drivers". You should see `sqlite3` and `pdo_sqlite` enabled.
+- Open in your browser and search for "sqlite" or "PDO drivers". You should see `sqlite3` and `pdo_sqlite` enabled.
 
 ---
 
@@ -87,16 +83,16 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite, you ma
 1. **Clone the repo:**
 
     ```bash
-    git clone https://github.com/HirotakaDango/music-player.git
-    cd music-player
+    git clone https://github.com/HirotakaDango/PHP-Music-Player.git
+    cd PHP-Music-Player
     ```
 
 2. **Download getID3:**
 
     - [Download latest getID3](https://github.com/JamesHeinrich/getID3/releases)
-    - Extract it as a `getid3` folder inside the project root:
+    - Extract as a `getid3` folder inside the project root:
       ```
-      music-player/
+      PHP-Music-Player/
         index.php
         getid3/
           getid3.php
@@ -105,12 +101,13 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite, you ma
 
 3. **Place music files:**
 
-    - Put your music files in the root folder or any subfolder below (the player recursively scans).
+    - Put your music files in the root folder or any subfolder (except `uploads/`).
+    - The player recursively scans for supported audio files.
 
 4. **Set permissions (if needed):**
 
-    - The PHP process must be able to write to `music.db` in the project directory.
-    - For uploads, make sure the `uploads/` folder (auto-created) is writable by PHP.
+    - PHP must be able to write to `music.db` in the project directory.
+    - For uploads, ensure the `uploads/` folder (auto-created) is writable by PHP.
 
 5. **Run with your favorite PHP server:**
 
@@ -118,57 +115,56 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite, you ma
       ```bash
       php -S localhost:8000
       ```
-    - Or use with Apache/Nginx as a normal PHP site.
+    - Or use with Apache/Nginx as a standard PHP site.
 
 6. **Open in browser:**
 
     - Go to [http://localhost:8000](http://localhost:8000)
     - Register a user account to unlock uploading and library scanning.
-    - Click "Scan Library" to index your music.
+    - Click "Scan Library" to index your music folder.
 
 ## Usage
 
-- **Register/Login**: Create a user account to access full features (upload, scan, delete, edit, favorites).
-- **Scan Library**: Click the "Scan Library" button in the sidebar to index or refresh your library (scans all music except uploads).
-- **Browse**: Use sidebar to view all songs, favorites, albums, artists, or genres.
-- **Search**: Use the search bar to instantly find songs, albums, or artists.
+- **Register/Login**: Create a user account for full features (upload, scan, delete, edit, favorites).
+- **Scan Library**: Click "Scan Library" in the sidebar to index or refresh your library (scans all music except uploads).
+- **Browse**: Use the sidebar to view all songs, favorites, albums, artists, or genres.
+- **Search**: Use the search bar (desktop/mobile) to instantly find songs, albums, or artists.
 - **Play Music**: Click a song to play, or use the player controls at the bottom.
 - **Favorites**: Click the heart icon to add/remove from favorites. Drag to reorder in "Favorites" view.
 - **Edit Genre**: Right-click (or tap "..." on mobile) a song and choose "Edit Genre".
-- **Upload Music**: Click "Upload Song" in the sidebar. You may upload multiple files; genre is auto-detected but can be overridden.
-- **Delete/Download**: Use the context menu on your own uploads to delete or download songs.
-- **PWA**: Click "Install App" in the sidebar (appears if your browser supports PWAs).
+- **Upload Music**: Click "Upload Song". You can upload multiple files; genre is auto-detected but can be overridden.
+- **Delete/Download**: Use context menu on your uploads to delete or download.
+- **PWA**: Click "Install App" (sidebar) if your browser supports PWAs.
 
 ## How does it work?
 
-- **index.php** acts as both the backend API (responding to `?action=...`) and serves the single-page frontend.
-- User authentication is session-based (server-side sessions).
-- Scanning uses getID3 to extract metadata and album art, storing info in `music.db` (SQLite).
-- Album art is extracted, resized, and converted to `.webp` for efficiency.
-- All playback is done in-browser via JavaScript and HTML5 `<audio>`.
-- PWA features are powered by a manifest and a service worker (`?pwa=manifest` and `?pwa=sw`).
-- Uploads are stored in `/uploads/{artist}/` and only accessible to the uploading user or the admin ("Music Library" user).
+- **index.php** is both the backend API (`?action=...`) and the single-page frontend.
+- User authentication is session-based (server-side PHP sessions).
+- Scanning uses getID3 for metadata and album art, storing info in `music.db` (SQLite).
+- Album art is extracted, resized, and converted to `.webp`.
+- Playback via JavaScript and HTML5 `<audio>`, with Media Session API support.
+- PWA support includes manifest and service worker (`?pwa=manifest`, `?pwa=sw`).
+- Uploads are stored in `/uploads/{artist}/` and are only accessible to the uploader or admin.
 - Only the uploading user (or admin) can edit genre, delete, or download their uploads.
 
 ## Customization
 
-- To change colors, edit the CSS variables in `<style>` of `index.php`.
-- To add more audio formats, adjust the regex in `scan_music_directory()` in `index.php`.
-- To support remote music sources, some backend refactoring would be needed.
-- For public access, add authentication and security features (see below).
+- **Colors**: Edit CSS variables in `<style>` inside `index.php`.
+- **Audio formats**: Adjust the regex in `scan_music_directory()` in `index.php` to add more formats.
+- **Remote sources**: Would require backend refactoring.
+- **Public/Internet use**: Add your own authentication and security features (see below).
 
 ## Security
 
-- **Warning:** This is intended for personal use on your own server or LAN.
-- No public authentication or user system is included by default.
+- **Warning:** Intended for personal use on your own server or LAN.
 - Do **NOT** expose this directly to the public Internet without additional security.
 - Each user has their own uploads, favorites, and permissions. Only their own uploads can be deleted/edited/downloaded.
 
 ## Troubleshooting
 
-- **Scan errors**: Ensure `getid3/` exists and is accessible, and PHP has permission to read music files and write `music.db`.
-- **Upload errors**: Make sure the `uploads/` directory is writeable and that your PHP settings allow large enough file uploads (`upload_max_filesize`, `post_max_size`).
-- **Missing album art**: Some files may lack embedded images, default SVG will show.
+- **Scan errors**: Ensure `getid3/` exists and is accessible, and PHP can read music files and write `music.db`.
+- **Upload errors**: Make sure the `uploads/` directory is writable and PHP settings allow large enough uploads (`upload_max_filesize`, `post_max_size`).
+- **Missing album art**: Some files may lack embedded images (default SVG will show).
 - **Playback issues**: Browser support for some formats (like FLAC) may be limited.
 - **Genre not showing**: Use "Edit Genre" from the context menu to update.
 
