@@ -1294,9 +1294,6 @@ function scan_music_directory($db) {
         border: none;
         border-radius: 1rem;
       }
-      .modal-header {
-        border-bottom: 1px solid var(--ytm-surface-2);
-      }
       .modal-footer {
         border-top: 1px solid var(--ytm-surface-2);
       }
@@ -1597,7 +1594,7 @@ function scan_music_directory($db) {
     <div class="modal fade" id="login-modal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-          <div class="modal-header">
+          <div class="modal-header border-0">
             <h5 class="modal-title">Login</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
@@ -1620,19 +1617,19 @@ function scan_music_directory($db) {
     <div class="modal fade" id="register-modal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-          <div class="modal-header">
+          <div class="modal-header border-0">
             <h5 class="modal-title">Register</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <form id="register-form">
               <div class="mb-3">
-                <label for="register-email" class="form-label">Email address</label>
-                <input type="email" class="form-control" id="register-email" required>
-              </div>
-              <div class="mb-3">
                 <label for="register-artist" class="form-label">Artist/Display Name</label>
                 <input type="text" class="form-control" id="register-artist" required>
+              </div>
+              <div class="mb-3">
+                <label for="register-email" class="form-label">Email address</label>
+                <input type="email" class="form-control" id="register-email" required>
               </div>
               <div class="mb-3">
                 <label for="register-password" class="form-label">Password</label>
@@ -1647,7 +1644,7 @@ function scan_music_directory($db) {
     <div class="modal fade" id="settings-modal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-          <div class="modal-header">
+          <div class="modal-header border-0">
             <h5 class="modal-title">Settings</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
@@ -1667,7 +1664,7 @@ function scan_music_directory($db) {
     <div class="modal fade" id="upload-modal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-          <div class="modal-header">
+          <div class="modal-header border-0">
             <h5 class="modal-title">Upload Music</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
@@ -1678,7 +1675,6 @@ function scan_music_directory($db) {
               <small class="form-text text-secondary" id="upload-limit-text"></small>
             </div>
             <div class="mb-3">
-              <!-- FIX: Updated label to reflect correct genre logic -->
               <label for="song-genre" class="form-label">Custom Genre (only used if genre tag is missing from the file)</label>
               <input type="text" class="form-control" id="song-genre" placeholder="Pop, Rock, J-Pop">
             </div>
