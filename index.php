@@ -26,10 +26,8 @@ if (isset($_GET['pwa'])) {
   // Serve the Service Worker
   if ($_GET['pwa'] == 'sw') {
     header('Content-Type: application/javascript; charset=utf-8');
-    // We use a Network-First, then Cache strategy for dynamic content.
-    // For static assets, we use Cache-First. This ensures the app is fast but data is always fresh.
     echo <<<SW
-    const CACHE_NAME = 'php-music-cache-v7';
+    const CACHE_NAME = 'php-music-cache-v8';
     const STATIC_ASSETS = [
       './',
       'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
@@ -62,18 +60,14 @@ if (isset($_GET['pwa'])) {
       const isApiCall = url.searchParams.has('action');
       const isPwaCall = url.searchParams.has('pwa');
 
-      // Always go to the network for API calls and PWA files to ensure freshness.
-      // This prevents issues with stale data for favorites, deletions, etc.
       if (isApiCall || isPwaCall) {
         event.respondWith(fetch(event.request));
         return;
       }
       
-      // For all other requests (static assets), use a Cache-first strategy.
       event.respondWith(
         caches.match(event.request).then(response => {
           return response || fetch(event.request).then(networkResponse => {
-            // Cache newly fetched static assets.
             if (networkResponse && networkResponse.ok) {
                const responseToCache = networkResponse.clone();
                caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
@@ -195,13 +189,11 @@ function process_image_to_webp($imageData) {
   return $webpData;
 }
 
-// API Action Router
 if (isset($_GET['action'])) {
   $action = $_GET['action'];
   $db = get_db();
   init_db($db);
 
-  // Set headers to prevent caching of API responses, ensuring real-time updates.
   header('Content-Type: application/json; charset=utf-8');
   header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
   header('Pragma: no-cache');
@@ -214,10 +206,9 @@ if (isset($_GET['action'])) {
 
   switch ($action) {
     case 'get_app_icon':
-      // Serve a scalable SVG icon directly. No Imagick or Base64 PNG needed.
       header_remove('Content-Type');
       header('Content-Type: image/svg+xml');
-      $size = intval($_GET['size'] ?? 192); // Size is for reference, SVG is scalable
+      $size = intval($_GET['size'] ?? 192);
       echo '<svg xmlns="http://www.w3.org/2000/svg" width="'.$size.'" height="'.$size.'" fill="white" class="bi bi-boombox-fill" viewBox="0 0 16 16"><path d="M11.538 6.237a.5.5 0 0 0-.738.03l-1.36 2.04a.5.5 0 0 0 .37.823h2.72a.5.5 0 0 0 .37-.823l-1.359-2.04a.5.5 0 0 0-.363-.17z"/><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM4.5 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2m7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2M6 6.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 0-1h-3a.5.5 0 0 0-.5.5m-1.5 6a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 0-1h-5a.5.5 0 0 0-.5.5"/></svg>';
       exit;
 
@@ -350,7 +341,6 @@ if (isset($_GET['action'])) {
           $album = trim($info['comments']['album'][0] ?? 'Unknown Album');
           $year = (int)($info['comments']['year'][0] ?? 0);
           $duration = (int)($info['playtime_seconds'] ?? 0);
-          // FIX: Use genre from file first, then from form, then default.
           $genre = trim($info['comments']['genre'][0] ?? '') ?: trim($_POST['genre'] ?? '') ?: 'Uploaded';
           $raw_image_data = isset($info['comments']['picture'][0]['data']) ? $info['comments']['picture'][0]['data'] : null;
           $webp_image_data = process_image_to_webp($raw_image_data);
@@ -545,7 +535,6 @@ if (isset($_GET['action'])) {
       $param = $post_data['param'] ?? '';
       $sort = $post_data['sort'] ?? '';
 
-      // FIX: Decode param for views where it's URL encoded from a data attribute.
       if (in_array($view_type, ['artist_songs', 'album_songs', 'genre_songs'])) {
         $param = urldecode($param);
       }
@@ -608,17 +597,17 @@ if (isset($_GET['action'])) {
       exit;
 
     case 'get_artists':
-      $stmt = $db->query("SELECT DISTINCT artist FROM music WHERE artist != '' AND artist IS NOT NULL ORDER BY artist COLLATE NOCASE " . $limit_clause);
+      $stmt = $db->query("SELECT DISTINCT artist FROM music WHERE artist != '' AND artist IS NOT NULL ORDER BY artist COLLATE NOCASE");
       echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
       break;
 
     case 'get_albums':
-      $stmt = $db->query("SELECT album, artist, MAX(id) as id FROM music WHERE album != '' AND album IS NOT NULL GROUP BY album ORDER BY album COLLATE NOCASE " . $limit_clause);
+      $stmt = $db->query("SELECT album, artist, MAX(id) as id FROM music WHERE album != '' AND album IS NOT NULL GROUP BY album ORDER BY album COLLATE NOCASE");
       echo json_encode($stmt->fetchAll());
       break;
     
     case 'get_genres':
-      $stmt = $db->query("SELECT DISTINCT genre FROM music WHERE genre != '' AND genre IS NOT NULL ORDER BY genre COLLATE NOCASE " . $limit_clause);
+      $stmt = $db->query("SELECT DISTINCT genre FROM music WHERE genre != '' AND genre IS NOT NULL ORDER BY genre COLLATE NOCASE");
       echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
       break;
     
@@ -652,7 +641,6 @@ if (isset($_GET['action'])) {
 
     case 'get_song_data':
       $id = intval($_GET['id'] ?? 0);
-      // FIX: Added m.genre to the returned data for the edit feature.
       $stmt = $db->prepare("SELECT m.id, m.file, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? WHERE m.id = ?");
       $stmt->execute([$user_id, $id]);
       $song = $stmt->fetch();
@@ -723,17 +711,6 @@ if (isset($_GET['action'])) {
   exit;
 }
 
-/**
- * SCANNER FIX: New recursive scanner using basic `scandir`.
- * This is highly compatible with restricted shared hosting environments (like InfinityFree)
- * that may disable `RecursiveDirectoryIterator` or have `open_basedir` restrictions.
- * It also explicitly skips the 'uploads' directory for efficiency.
- *
- * @param string $dir The directory to scan.
- * @param array &$results The array to store results in (by reference).
- * @param string $uploads_path The full, real path to the user uploads directory to skip.
- * @return void
- */
 function get_music_files_recursive($dir, &$results, $uploads_path) {
   if (!is_readable($dir)) { return; }
   
@@ -745,7 +722,6 @@ function get_music_files_recursive($dir, &$results, $uploads_path) {
     
     $path = $dir . DIRECTORY_SEPARATOR . $item;
     
-    // Explicitly skip the entire uploads directory
     if ($path === $uploads_path) {
       continue;
     }
@@ -776,7 +752,6 @@ function scan_music_directory($db) {
   $stmt = $db->query("SELECT file, last_modified FROM music WHERE user_id = " . $library_user_id);
   $db_files = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
-  // Use the new, more compatible recursive scanner.
   $disk_files = [];
   $uploads_path = realpath(MUSIC_DIR . '/uploads');
   get_music_files_recursive(MUSIC_DIR, $disk_files, $uploads_path);
@@ -1521,6 +1496,11 @@ function scan_music_directory($db) {
             <i class="bi bi-cloud-arrow-down-fill"></i>
             <span>Install App</span>
           </a>
+          <a href="#" class="nav-link" id="clear-cache-btn">
+            <i class="bi bi-eraser-fill"></i>
+            <span>Clear Cache</span>
+          </a>
+
           <div class="scan-status">
             <p id="scan-status-text" class="badge bg-primary fw-bold">Ready.</p>
             <div class="progress d-none" id="scan-progress-bar-container">
@@ -1734,6 +1714,7 @@ function scan_music_directory($db) {
         const timeLeftEl = document.getElementById('time-left');
         const infiniteScrollLoader = document.getElementById('infinite-scroll-loader');
         const installPwaBtn = document.getElementById('install-pwa-btn');
+        const clearCacheBtn = document.getElementById('clear-cache-btn');
         const genresModalEl = document.getElementById('genres-modal');
         const genresModal = genresModalEl ? new bootstrap.Modal(genresModalEl) : null;
         const genresModalBody = document.getElementById('genres-modal-body');
@@ -2029,37 +2010,43 @@ function scan_music_directory($db) {
           let url, data;
           const { type, param, sort } = currentView;
           
+          const params = new URLSearchParams({
+            page: currentPage,
+            sort: sort
+          });
+
           switch(type) {
             case 'songs':
+              url = `?action=get_songs&${params.toString()}`;
+              data = await fetchData(url);
+              renderSongs(data, true);
+              break;
             case 'artist_songs':
             case 'album_songs':
             case 'genre_songs':
-              let filter = type.endsWith('_songs') ? `&${type.split('_')[0]}=${encodeURIComponent(param)}` : '';
-              url = `?action=get_songs&page=${currentPage}&sort=${sort}${filter}`;
+              const filterType = type.split('_')[0];
+              const filterValue = decodeURIComponent(param);
+              params.append(filterType, filterValue);
+              url = `?action=get_songs&${params.toString()}`;
               data = await fetchData(url);
               renderSongs(data, true);
               break;
             case 'profile_songs':
-              url = `?action=get_profile_songs&page=${currentPage}&sort=${sort}`;
+              url = `?action=get_profile_songs&${params.toString()}`;
               data = await fetchData(url);
               renderSongs(data, true);
               break;
             case 'favorites':
-              url = `?action=get_favorites&page=${currentPage}&sort=${sort}`;
+              url = `?action=get_favorites&${params.toString()}`;
               data = await fetchData(url);
               renderSongs(data, true);
               break;
             case 'search':
-              url = `?action=search&q=${encodeURIComponent(param)}&page=${currentPage}`;
+              params.delete('sort');
+              params.append('q', param);
+              url = `?action=search&${params.toString()}`;
               data = await fetchData(url);
               renderSongs(data, true);
-              break;
-            case 'albums':
-            case 'artists':
-            case 'genres':
-              url = `?action=get_${type}&page=${currentPage}`;
-              data = await fetchData(url);
-              renderGrid(data, type, true);
               break;
             default:
               allContentloaded = true;
@@ -2082,31 +2069,38 @@ function scan_music_directory($db) {
 
           currentView = viewConfig;
           setupSortOptions(currentView.type);
-
+          
           let data;
           let viewName = currentView.type.charAt(0).toUpperCase() + currentView.type.slice(1);
+          let endpoint;
+          const params = new URLSearchParams({ sort: currentView.sort, page: 1 });
           
           switch (currentView.type) {
             case 'songs':
               updateContentTitle('All Songs');
-              data = await fetchData(`?action=get_songs&sort=${currentView.sort}&page=1`);
+              endpoint = `?action=get_songs&${params.toString()}`;
+              data = await fetchData(endpoint);
               renderSongs(data, false);
               break;
             case 'profile_songs':
               updateContentTitle('My Music');
-              data = await fetchData(`?action=get_profile_songs&sort=${currentView.sort}&page=1`);
+              endpoint = `?action=get_profile_songs&${params.toString()}`;
+              data = await fetchData(endpoint);
               renderSongs(data, false);
               break;
             case 'favorites':
               updateContentTitle('Favorites');
-              data = await fetchData(`?action=get_favorites&sort=${currentView.sort}&page=1`);
+              endpoint = `?action=get_favorites&${params.toString()}`;
+              data = await fetchData(endpoint);
               renderSongs(data, false);
               break;
             case 'albums':
             case 'artists':
             case 'genres':
+              allContentloaded = true;
               updateContentTitle(viewName);
-              data = await fetchData(`?action=get_${currentView.type}&page=1`);
+              endpoint = `?action=get_${currentView.type}`;
+              data = await fetchData(endpoint);
               renderGrid(data, currentView.type, false);
               break;
             case 'artist_songs':
@@ -2118,20 +2112,28 @@ function scan_music_directory($db) {
               const details = await fetchData(`?action=get_view_details&type=${type}&name=${encodeURIComponent(name)}`);
               contentArea.innerHTML = '';
               if (details) renderViewDetailsHeader(details, type);
-              data = await fetchData(`?action=get_songs&${type}=${currentView.param}&sort=${currentView.sort}&page=1`);
+              
+              params.append(type, name);
+              endpoint = `?action=get_songs&${params.toString()}`;
+              data = await fetchData(endpoint);
               renderSongs(data, false);
               break;
             case 'search':
               updateContentTitle(`Search: "${currentView.param}"`);
-              data = await fetchData(`?action=search&q=${encodeURIComponent(currentView.param)}&page=1`);
+              params.delete('sort');
+              params.append('q', currentView.param);
+              endpoint = `?action=search&${params.toString()}`;
+              data = await fetchData(endpoint);
               renderSongs(data, false);
               break;
           }
 
-          if (!data || data.length < 25) {
-            allContentloaded = true;
-            hideLoader();
+          if (['songs', 'profile_songs', 'favorites', 'artist_songs', 'album_songs', 'genre_songs', 'search'].includes(currentView.type)) {
+            if (!data || data.length < 25) {
+              allContentloaded = true;
+            }
           }
+          hideLoader();
         };
 
         const playSongById = async (songId) => {
@@ -2361,7 +2363,7 @@ function scan_music_directory($db) {
         };
 
         allNavLinks.forEach(link => {
-          if (link.id === 'logout-btn' || link.id === 'scan-btn' || link.getAttribute('data-bs-toggle') === 'modal' || link.id === 'install-pwa-btn') return;
+          if (link.id === 'logout-btn' || link.id === 'scan-btn' || link.getAttribute('data-bs-toggle') === 'modal' || link.id === 'install-pwa-btn' || link.id === 'clear-cache-btn') return;
           link.addEventListener('click', e => {
             e.preventDefault();
             const navLink = e.currentTarget;
@@ -2599,6 +2601,32 @@ function scan_music_directory($db) {
           deferredInstallPrompt = null;
           installPwaBtn.classList.add('d-none');
         });
+
+        clearCacheBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          if (!confirm('This will clear all cached app data (including localStorage) and reload the page. Are you sure?')) {
+            return;
+          }
+          try {
+            localStorage.clear();
+            sessionStorage.clear();
+            if ('caches' in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(key => caches.delete(key)));
+            }
+            if ('serviceWorker' in navigator) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              for(const registration of registrations) {
+                await registration.unregister();
+              }
+            }
+            showToast('Cache cleared successfully. Reloading...', 'success');
+            setTimeout(() => window.location.reload(true), 1500);
+          } catch (error) {
+            console.error('Error clearing cache:', error);
+            showToast('Failed to clear cache.', 'error');
+          }
+        });
         
         const loginForm = document.getElementById('login-form');
         const registerForm = document.getElementById('register-form');
@@ -2741,7 +2769,7 @@ function scan_music_directory($db) {
           const data = await fetchData('?action=get_session');
           if (data && data.status === 'loggedin') {
             currentUser = data.user;
-            uploadLimitText.textContent = data.upload_limit;
+            if (uploadLimitText) uploadLimitText.textContent = data.upload_limit;
           } else {
             currentUser = null;
           }
