@@ -1,10 +1,9 @@
 # PHP Music Player
 
-A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, organize, upload, and manage your own library with user accounts.
+A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, upload tracks, and manage your own library—all in a single-page app.
 
 ![f14d2db43f7d_i0](https://github.com/user-attachments/assets/c982c7a3-b12d-4e86-b8a1-f3820c08e02f)
 ![f14d2db43f7d_i1](https://github.com/user-attachments/assets/8e65a4a2-aa3f-47a2-9d73-bb91a431f9af)
-
 
 ## Features
 
@@ -17,13 +16,14 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 - 📱 **Responsive UI**: Fully responsive, with a mobile-optimized layout.
 - ⚡ **PWA Support**: Install as an app on your phone or desktop. Works offline (caches assets & some API). Manifest & service worker included.
 - 🚀 **No Database Setup**: Uses SQLite, auto-initialized on first run.
-- 👤 **User Accounts**: Register/login. Each user can upload their own music, manage their own favorites, and delete/edit their own uploads.
-- ☁️ **Upload Music**: Upload new songs (multi-file, genre auto-detected from file/tag or custom). Embedded metadata extraction.
+- 👤 **User Accounts**: Register/login. Each user can upload their own music, manage their own favorites and uploads.
+- ☁️ **Upload Music**: Upload new songs (multi-file, genre auto-detected from file/tag or custom). Embedded metadata extraction. Each user can upload up to 5 songs per day (daily limit).
 - 🏷️ **Edit Genre**: Change genre from the context menu.
 - 🗑️ **Delete Songs**: Delete your own uploads from the UI/context menu.
 - ⬇️ **Download Songs**: Download your uploads directly from the context menu.
-- 🔐 **Session Security**: All write actions require login.
+- 🔐 **Session Security**: All write actions require login. Uploads require account verification by an admin.
 - 🛠️ **Settings**: Change password and manage your account.
+- 🏢 **Admin Panel**: Admin can verify/un-verify user accounts, view user stats, and manage verification for uploads.
 
 ## Demo
 
@@ -121,25 +121,34 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 
     - Go to [http://localhost:8000](http://localhost:8000)
     - Register a user account to unlock uploading and library scanning.
+    - **IMPORTANT:** After registering, an admin must verify your account before you can upload music (see below).
     - Click "Scan Library" to index your music folder.
 
 ## Usage
 
 - **Register/Login**: Create a user account for full features (upload, scan, delete, edit, favorites).
+- **Account Verification**: After registering, your account must be verified by an admin before you can upload music. Unverified users can still scan, browse, and play music.
 - **Scan Library**: Click "Scan Library" in the sidebar to index or refresh your library (scans all music except uploads).
 - **Browse**: Use the sidebar to view all songs, favorites, albums, artists, or genres.
 - **Search**: Use the search bar (desktop/mobile) to instantly find songs, albums, or artists.
 - **Play Music**: Click a song to play, or use the player controls at the bottom.
 - **Favorites**: Click the heart icon to add/remove from favorites. Drag to reorder in "Favorites" view.
 - **Edit Genre**: Right-click (or tap "..." on mobile) a song and choose "Edit Genre".
-- **Upload Music**: Click "Upload Song". You can upload multiple files; genre is auto-detected but can be overridden.
+- **Upload Music**: Click "Upload Song". You can upload multiple files; genre is auto-detected but can be overridden. **Upload limit:** 5 songs per user per day.
 - **Delete/Download**: Use context menu on your uploads to delete or download.
 - **PWA**: Click "Install App" (sidebar) if your browser supports PWAs.
+
+### Admin Panel
+
+- Go to `?access=admin` (e.g., `http://localhost:8000/?access=admin`)
+- Default Admin Password: `admin`
+- Admin can verify/un-verify user accounts, view user details, and manage verification status for uploads.
 
 ## How does it work?
 
 - **index.php** is both the backend API (`?action=...`) and the single-page frontend.
 - User authentication is session-based (server-side PHP sessions).
+- User uploads are separated—each user can only manage their own uploads.
 - Scanning uses getID3 for metadata and album art, storing info in `music.db` (SQLite).
 - Album art is extracted, resized, and converted to `.webp`.
 - Playback via JavaScript and HTML5 `<audio>`, with Media Session API support.
@@ -159,11 +168,12 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - **Warning:** Intended for personal use on your own server or LAN.
 - Do **NOT** expose this directly to the public Internet without additional security.
 - Each user has their own uploads, favorites, and permissions. Only their own uploads can be deleted/edited/downloaded.
+- Users must be verified by an admin before uploading music.
 
 ## Troubleshooting
 
 - **Scan errors**: Ensure `getid3/` exists and is accessible, and PHP can read music files and write `music.db`.
-- **Upload errors**: Make sure the `uploads/` directory is writable and PHP settings allow large enough uploads (`upload_max_filesize`, `post_max_size`).
+- **Upload errors**: Make sure the `uploads/` directory is writable and PHP settings allow large enough uploads (`upload_max_filesize`, `post_max_size`). Ensure your account is verified.
 - **Missing album art**: Some files may lack embedded images (default SVG will show).
 - **Playback issues**: Browser support for some formats (like FLAC) may be limited.
 - **Genre not showing**: Use "Edit Genre" from the context menu to update.
