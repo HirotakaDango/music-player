@@ -1,6 +1,6 @@
 # PHP Music Player
 
-A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, upload tracks, and manage your own library—all in a single-page app.
+A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, manage your library, favorites, and playlists—all from a beautiful single page app!
 
 ![f14d2db43f7d_i0](https://github.com/user-attachments/assets/c982c7a3-b12d-4e86-b8a1-f3820c08e02f)
 ![f14d2db43f7d_i1](https://github.com/user-attachments/assets/8e65a4a2-aa3f-47a2-9d73-bb91a431f9af)
@@ -10,20 +10,22 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 - 🎵 **Scan Local Music**: Recursively scans your directory for `mp3`, `m4a`, `flac`, `ogg`, and `wav` files (excluding uploads).
 - 🏷️ **Automatic Metadata**: Uses [getID3](https://github.com/JamesHeinrich/getID3) to extract artist, album, year, genre, and cover images.
 - 📚 **Library Management**: Browse by songs, artists, albums, genres, or favorites. Instant search included.
-- ❤️ **Favorites**: Mark/unmark songs as favorites (custom order, stored per user). Drag to reorder. Import/export supported.
-- 🔊 **Player**: Play, pause, next/prev, repeat, shuffle, seeking, and cover art display. In-browser playback via HTML5 `<audio>`.
+- ❤️ **Favorites**: Mark/unmark songs as favorites. Drag to reorder in "Favorites" view. Import/export supported.
+- 🔊 **Player**: Play, pause, next/prev, repeat, shuffle, seek, and cover art display. In-browser playback via HTML5 `<audio>`. Media Session API support.
 - 🖼️ **Album Art**: Displays embedded images as `.webp` (SVG fallback if missing).
-- 📱 **Responsive UI**: Fully responsive, with a mobile-optimized layout.
-- ⚡ **PWA Support**: Install as an app on your phone or desktop. Works offline (caches assets & some API). Manifest & service worker included.
+- 📱 **Responsive UI**: Mobile-optimized, fast, and touch-friendly.
+- ⚡ **PWA Support**: Install as an app on your phone or desktop. Works offline (caches static assets & some API). Manifest & service worker included.
 - 🚀 **No Database Setup**: Uses SQLite, auto-initialized on first run.
 - 👤 **User Accounts**: Register/login. Each user can upload their own music, manage their own favorites and uploads.
-- ☁️ **Upload Music**: Upload new songs (multi-file, genre auto-detected from file/tag or custom). Embedded metadata extraction. Each user can upload up to 5 songs per day (daily limit).
+- ☁️ **Upload Music**: Upload new songs (multi-file, genre auto-detected from file/tag or custom). Each user can upload up to 5 songs per day (daily limit).
 - 🏷️ **Edit Genre**: Change genre from the context menu.
 - 🗑️ **Delete Songs**: Delete your own uploads from the UI/context menu.
 - ⬇️ **Download Songs**: Download your uploads directly from the context menu.
 - 🔐 **Session Security**: All write actions require login. Uploads require account verification by an admin.
 - 🛠️ **Settings**: Change password and manage your account.
 - 🏢 **Admin Panel**: Admin can verify/un-verify user accounts, view user stats, and manage verification for uploads.
+- 🎶 **Playlists**: Create, manage, and reorder custom playlists for your favorite tracks.
+- 🔄 **Drag-and-drop Ordering**: Reorder favorites and playlist songs by dragging.
 
 ## Demo
 
@@ -126,17 +128,18 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 
 ## Usage
 
-- **Register/Login**: Create a user account for full features (upload, scan, delete, edit, favorites).
+- **Register/Login**: Create a user account for full features (upload, scan, delete, edit, favorites, playlists).
 - **Account Verification**: After registering, your account must be verified by an admin before you can upload music. Unverified users can still scan, browse, and play music.
 - **Scan Library**: Click "Scan Library" in the sidebar to index or refresh your library (scans all music except uploads).
-- **Browse**: Use the sidebar to view all songs, favorites, albums, artists, or genres.
+- **Browse**: Use the sidebar to view all songs, favorites, albums, artists, genres, or your own uploads.
+- **Playlists**: Create, edit, and drag-to-reorder your own custom playlists. Add/remove songs easily.
 - **Search**: Use the search bar (desktop/mobile) to instantly find songs, albums, or artists.
 - **Play Music**: Click a song to play, or use the player controls at the bottom.
 - **Favorites**: Click the heart icon to add/remove from favorites. Drag to reorder in "Favorites" view.
 - **Edit Genre**: Right-click (or tap "..." on mobile) a song and choose "Edit Genre".
-- **Upload Music**: Click "Upload Song". You can upload multiple files; genre is auto-detected but can be overridden. **Upload limit:** 5 songs per user per day.
+- **Upload Music**: Click "Upload Song". You can upload multiple files at once; genre is auto-detected but can be overridden. **Upload limit:** 5 songs per user per day.
 - **Delete/Download**: Use context menu on your uploads to delete or download.
-- **PWA**: Click "Install App" (sidebar) if your browser supports PWAs.
+- **PWA**: Click "Install App" (sidebar) if your browser supports PWAs. Works offline for playback and browsing.
 
 ### Admin Panel
 
@@ -155,6 +158,7 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - PWA support includes manifest and service worker (`?pwa=manifest`, `?pwa=sw`).
 - Uploads are stored in `/uploads/{artist}/` and are only accessible to the uploader or admin.
 - Only the uploading user (or admin) can edit genre, delete, or download their uploads.
+- Playlists and favorites support drag-and-drop ordering.
 
 ## Customization
 
