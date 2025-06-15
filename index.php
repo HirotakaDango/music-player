@@ -27,7 +27,7 @@ if (isset($_GET['pwa'])) {
   if ($_GET['pwa'] == 'sw') {
     header('Content-Type: application/javascript; charset=utf-8');
     echo <<<SW
-    const CACHE_NAME = 'php-music-cache-v8';
+    const CACHE_NAME = 'php-music-cache-v12';
     const STATIC_ASSETS = [
       './',
       'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
@@ -333,6 +333,20 @@ if (file_exists(__DIR__ . '/getid3/getid3.php')) {
   require_once __DIR__ . '/getid3/getid3.php';
 }
 
+function send_json($data) {
+  if (!headers_sent()) {
+    header('Content-Type: application/json; charset=utf-8');
+  }
+  $json = json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE);
+  if ($json === false) {
+    http_response_code(500);
+    echo '{"status":"error", "message":"JSON encoding error: ' . json_last_error_msg() . '"}';
+  } else {
+    echo $json;
+  }
+  exit;
+}
+
 $initialViewJS = '';
 if (isset($_GET['share_type']) && isset($_GET['id'])) {
   $db_for_share = get_db();
@@ -360,6 +374,13 @@ if (isset($_GET['share_type']) && isset($_GET['id'])) {
     case 'artist':
       $view_config = ['type' => 'artist_songs', 'param' => rawurlencode($share_id_raw), 'sort' => 'album_asc'];
       break;
+    case 'playlist':
+      $stmt = $db_for_share->prepare("SELECT id FROM playlists WHERE public_id = ?");
+      $stmt->execute([$share_id_raw]);
+      if ($stmt->fetch()) {
+        $view_config = ['type' => 'playlist_songs', 'param' => rawurlencode($share_id_raw), 'sort' => 'manual_order'];
+      }
+      break;
   }
 
   if ($view_config) {
@@ -371,6 +392,7 @@ if (isset($_GET['share_type']) && isset($_GET['id'])) {
 
 function init_db($db) {
   $db->exec("PRAGMA journal_mode=WAL;");
+  $db->exec("PRAGMA foreign_keys = ON;");
 
   $users_columns = $db->query("PRAGMA table_info(users);")->fetchAll(PDO::FETCH_COLUMN, 1);
   $users_table_exists = !empty($users_columns);
@@ -425,11 +447,36 @@ function init_db($db) {
       FOREIGN KEY (song_id) REFERENCES music(id) ON DELETE CASCADE
     );
   ");
+  $db->exec("
+    CREATE TABLE IF NOT EXISTS playlists (
+      id INTEGER PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      public_id TEXT UNIQUE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  ");
+  $db->exec("
+    CREATE TABLE IF NOT EXISTS playlist_songs (
+      playlist_id INTEGER NOT NULL,
+      song_id INTEGER NOT NULL,
+      sort_order INTEGER,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (playlist_id, song_id),
+      FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+      FOREIGN KEY (song_id) REFERENCES music(id) ON DELETE CASCADE
+    );
+  ");
+
   $db->exec("CREATE INDEX IF NOT EXISTS music_artist_idx ON music(artist);");
   $db->exec("CREATE INDEX IF NOT EXISTS music_album_idx ON music(album);");
   $db->exec("CREATE INDEX IF NOT EXISTS music_genre_idx ON music(genre);");
   $db->exec("CREATE INDEX IF NOT EXISTS music_user_id_idx ON music(user_id);");
   $db->exec("CREATE INDEX IF NOT EXISTS fav_user_id_idx ON favorites(user_id);");
+  $db->exec("CREATE INDEX IF NOT EXISTS playlists_user_id_idx ON playlists(user_id);");
+  $db->exec("CREATE INDEX IF NOT EXISTS playlists_public_id_idx ON playlists(public_id);");
+  $db->exec("CREATE INDEX IF NOT EXISTS playlist_songs_playlist_id_idx ON playlist_songs(playlist_id);");
 
   $stmt = $db->query("SELECT id FROM users WHERE email = 'musiclibrary@mail.com'");
   if (!$stmt->fetch()) {
@@ -478,7 +525,6 @@ if (isset($_GET['action'])) {
   $db = get_db();
   init_db($db);
 
-  header('Content-Type: application/json; charset=utf-8');
   header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
   header('Pragma: no-cache');
   header('Expires: 0');
@@ -490,7 +536,6 @@ if (isset($_GET['action'])) {
 
   switch ($action) {
     case 'get_app_icon':
-      header_remove('Content-Type');
       header('Content-Type: image/svg+xml');
       $size = intval($_GET['size'] ?? 192);
       echo '<svg xmlns="http://www.w3.org/2000/svg" width="'.$size.'" height="'.$size.'" fill="white" class="bi bi-boombox-fill" viewBox="0 0 16 16"><path d="M11.538 6.237a.5.5 0 0 0-.738.03l-1.36 2.04a.5.5 0 0 0 .37.823h2.72a.5.5 0 0 0 .37-.823l-1.359-2.04a.5.5 0 0 0-.363-.17z"/><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM4.5 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2m7 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2M6 6.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 0-1h-3a.5.5 0 0 0-.5.5m-1.5 6a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 0-1h-5a.5.5 0 0 0-.5.5"/></svg>';
@@ -508,13 +553,13 @@ if (isset($_GET['action'])) {
             $uploads_today = (int)$user['daily_upload_count'];
           }
           $user['uploads_remaining'] = max(0, DAILY_UPLOAD_LIMIT - $uploads_today);
-          echo json_encode(['status' => 'loggedin', 'user' => $user, 'upload_limit' => get_upload_limit()]);
+          send_json(['status' => 'loggedin', 'user' => $user, 'upload_limit' => get_upload_limit()]);
         } else {
           session_destroy();
-          echo json_encode(['status' => 'loggedout']);
+          send_json(['status' => 'loggedout']);
         }
       } else {
-        echo json_encode(['status' => 'loggedout']);
+        send_json(['status' => 'loggedout']);
       }
       break;
 
@@ -526,21 +571,19 @@ if (isset($_GET['action'])) {
 
       if (!$email || empty($artist) || strlen($password) < 6) {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid data. Password needs 6+ characters.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'Invalid data. Password needs 6+ characters.']);
       }
       $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
       $stmt->execute([$email]);
       if ($stmt->fetch()) {
         http_response_code(409);
-        echo json_encode(['status' => 'error', 'message' => 'Email already registered.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'Email already registered.']);
       }
 
       $hash = password_hash($password, PASSWORD_DEFAULT);
       $stmt = $db->prepare("INSERT INTO users (email, artist, password_hash) VALUES (?, ?, ?)");
       $stmt->execute([$email, $artist, $hash]);
-      echo json_encode(['status' => 'success', 'message' => 'Registration successful. An admin will verify your account soon.']);
+      send_json(['status' => 'success', 'message' => 'Registration successful. An admin will verify your account soon.']);
       break;
 
     case 'login':
@@ -550,8 +593,7 @@ if (isset($_GET['action'])) {
 
       if (!$email || empty($password)) {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Email and password are required.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'Email and password are required.']);
       }
       $stmt = $db->prepare("SELECT * FROM users WHERE email = ?");
       $stmt->execute([$email]);
@@ -560,16 +602,16 @@ if (isset($_GET['action'])) {
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_artist'] = $user['artist'];
         unset($user['password_hash']);
-        echo json_encode(['status' => 'success', 'user' => $user, 'upload_limit' => get_upload_limit()]);
+        send_json(['status' => 'success', 'user' => $user, 'upload_limit' => get_upload_limit()]);
       } else {
         http_response_code(401);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid credentials.']);
+        send_json(['status' => 'error', 'message' => 'Invalid credentials.']);
       }
       break;
 
     case 'logout':
       session_destroy();
-      echo json_encode(['status' => 'success']);
+      send_json(['status' => 'success']);
       break;
 
     case 'change_password':
@@ -578,25 +620,24 @@ if (isset($_GET['action'])) {
       $new_password = $data['new_password'];
       if (strlen($new_password) < 6) {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Password must be at least 6 characters.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'Password must be at least 6 characters.']);
       }
       $hash = password_hash($new_password, PASSWORD_DEFAULT);
       $stmt = $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
       $stmt->execute([$hash, $user_id]);
-      echo json_encode(['status' => 'success', 'message' => 'Password changed successfully.']);
+      send_json(['status' => 'success', 'message' => 'Password changed successfully.']);
       break;
 
     case 'scan':
       if (!$user_id) { http_response_code(403); exit; }
-      echo json_encode(['status' => 'starting']);
+      send_json(['status' => 'starting']);
       session_write_close();
       ob_flush(); flush();
       scan_music_directory($db);
       break;
 
     case 'scan_status':
-      echo json_encode(['status' => $_SESSION['scan_status'] ?? 'idle', 'message' => $_SESSION['scan_message'] ?? '']);
+      send_json(['status' => $_SESSION['scan_status'] ?? 'idle', 'message' => $_SESSION['scan_message'] ?? '']);
       break;
 
     case 'upload_song':
@@ -608,14 +649,12 @@ if (isset($_GET['action'])) {
 
       if (!$user_data) {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'User not found.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'User not found.']);
       }
 
       if ($user_data['verified'] !== 'yes') {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'Your account is not verified for uploads.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'Your account is not verified for uploads.']);
       }
 
       $today = date('Y-m-d');
@@ -626,21 +665,18 @@ if (isset($_GET['action'])) {
 
       if ($daily_upload_count >= DAILY_UPLOAD_LIMIT) {
         http_response_code(429);
-        echo json_encode(['status' => 'error', 'message' => 'Daily upload limit of ' . DAILY_UPLOAD_LIMIT . ' songs reached.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'Daily upload limit of ' . DAILY_UPLOAD_LIMIT . ' songs reached.']);
       }
 
       if (!class_exists('getID3')) {
         http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'getID3 library is missing.']);
-        exit;
+        send_json(['status' => 'error', 'message' => 'getID3 library is missing.']);
       }
       if (isset($_FILES['song'])) {
         $file = $_FILES['song'];
         if ($file['error'] !== UPLOAD_ERR_OK) {
             http_response_code(400);
-            echo json_encode(['status' => 'error', 'message' => 'Upload error: ' . $file['error']]);
-            exit;
+            send_json(['status' => 'error', 'message' => 'Upload error: ' . $file['error']]);
         }
         $getID3 = new getID3;
         $info = $getID3->analyze($file['tmp_name']);
@@ -671,10 +707,10 @@ if (isset($_GET['action'])) {
           $update_stmt = $db->prepare("UPDATE users SET daily_upload_count = ?, last_upload_date = ? WHERE id = ?");
           $update_stmt->execute([$new_count, $today, $user_id]);
 
-          echo json_encode(['status' => 'success', 'message' => 'File ' . $filename . ' uploaded.']);
+          send_json(['status' => 'success', 'message' => 'File ' . $filename . ' uploaded.']);
         } else {
           http_response_code(500);
-          echo json_encode(['status' => 'error', 'message' => 'Failed to move uploaded file.']);
+          send_json(['status' => 'error', 'message' => 'Failed to move uploaded file.']);
         }
       }
       break;
@@ -693,10 +729,10 @@ if (isset($_GET['action'])) {
         if ($song['file'] && file_exists($song['file']) && strpos(realpath($song['file']), realpath(MUSIC_DIR . '/uploads')) === 0) {
           @unlink($song['file']);
         }
-        echo json_encode(['status' => 'success', 'message' => 'Song deleted.']);
+        send_json(['status' => 'success', 'message' => 'Song deleted.']);
       } else {
         http_response_code(403);
-        echo json_encode(['status' => 'error', 'message' => 'You do not have permission.']);
+        send_json(['status' => 'error', 'message' => 'You do not have permission.']);
       }
       break;
 
@@ -708,7 +744,6 @@ if (isset($_GET['action'])) {
       $song = $stmt->fetch();
 
       if ($song && file_exists($song['file'])) {
-        header_remove('Content-Type');
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         header('Content-Type: ' . finfo_file($finfo, $song['file']));
         finfo_close($finfo);
@@ -720,7 +755,7 @@ if (isset($_GET['action'])) {
         exit;
       } else {
         http_response_code(404);
-        echo json_encode(['status' => 'error', 'message' => 'File not found.']);
+        send_json(['status' => 'error', 'message' => 'File not found.']);
       }
       break;
 
@@ -731,9 +766,8 @@ if (isset($_GET['action'])) {
       $new_genre = trim(htmlspecialchars($data['genre'] ?? '', ENT_QUOTES, 'UTF-8'));
 
       if (empty($new_genre)) {
-          http_response_code(400);
-          echo json_encode(['status' => 'error', 'message' => 'Genre cannot be empty.']);
-          exit;
+        http_response_code(400);
+        send_json(['status' => 'error', 'message' => 'Genre cannot be empty.']);
       }
 
       $stmt = $db->prepare("SELECT user_id FROM music WHERE id = ?");
@@ -741,65 +775,66 @@ if (isset($_GET['action'])) {
       $song = $stmt->fetch();
 
       if ($song && ($song['user_id'] == $user_id || $_SESSION['user_artist'] == 'Music Library')) {
-          $stmt = $db->prepare("UPDATE music SET genre = ? WHERE id = ?");
-          $stmt->execute([$new_genre, $song_id]);
-          echo json_encode(['status' => 'success', 'message' => 'Genre updated successfully.']);
+        $stmt = $db->prepare("UPDATE music SET genre = ? WHERE id = ?");
+        $stmt->execute([$new_genre, $song_id]);
+        send_json(['status' => 'success', 'message' => 'Genre updated successfully.']);
       } else {
-          http_response_code(403);
-          echo json_encode(['status' => 'error', 'message' => 'You do not have permission to edit this song.']);
+        http_response_code(403);
+        send_json(['status' => 'error', 'message' => 'You do not have permission to edit this song.']);
       }
       break;
     
     case 'get_songs':
       $sort_key = $_GET['sort'] ?? 'artist_asc';
       $sort_map = [
-        'artist_asc' => 'ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
-        'title_asc' => 'ORDER BY title COLLATE NOCASE ASC',
-        'album_asc' => 'ORDER BY album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
-        'year_desc' => 'ORDER BY year DESC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
-        'year_asc' => 'ORDER BY year ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC'
+        'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
+        'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC'
       ];
       $order_by = $sort_map[$sort_key] ?? $sort_map['artist_asc'];
 
       $where_clauses = [];
-      $params = [];
+      $params = [$user_id];
+
       if (!empty($_GET['artist'])) {
-        $where_clauses[] = 'artist = ?';
+        $where_clauses[] = 'm.artist = ?';
         $params[] = $_GET['artist'];
       }
       if (!empty($_GET['album'])) {
-        $where_clauses[] = 'album = ?';
+        $where_clauses[] = 'm.album = ?';
         $params[] = $_GET['album'];
       }
       if (!empty($_GET['genre'])) {
-        $where_clauses[] = 'genre = ?';
+        $where_clauses[] = 'm.genre = ?';
         $params[] = $_GET['genre'];
       }
       $where_sql = count($where_clauses) > 0 ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
       
-      $stmt = $db->prepare("SELECT id, title, artist, album, genre, duration, user_id FROM music " . $where_sql . " " . $order_by . $limit_clause);
+      $stmt = $db->prepare("SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? " . $where_sql . " " . $order_by . $limit_clause);
       $stmt->execute($params);
-      echo json_encode($stmt->fetchAll());
+      send_json($stmt->fetchAll());
       break;
 
     case 'get_profile_songs':
-      if (!$user_id) { echo json_encode([]); exit; }
+      if (!$user_id) { send_json([]); }
       $sort_key = $_GET['sort'] ?? 'artist_asc';
       $sort_map = [
-        'artist_asc' => 'ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
-        'title_asc' => 'ORDER BY title COLLATE NOCASE ASC',
-        'album_asc' => 'ORDER BY album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
-        'year_desc' => 'ORDER BY year DESC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC',
-        'year_asc' => 'ORDER BY year ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC'
+        'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
+        'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC'
       ];
       $order_by = $sort_map[$sort_key] ?? $sort_map['artist_asc'];
-      $stmt = $db->prepare("SELECT id, title, artist, album, genre, duration, user_id FROM music WHERE user_id = ? " . $order_by . $limit_clause);
-      $stmt->execute([$user_id]);
-      echo json_encode($stmt->fetchAll());
+      $stmt = $db->prepare("SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? WHERE m.user_id = ? " . $order_by . $limit_clause);
+      $stmt->execute([$user_id, $user_id]);
+      send_json($stmt->fetchAll());
       break;
 
     case 'get_favorites':
-      if (!$user_id) { echo json_encode([]); exit; }
+      if (!$user_id) { send_json([]); }
       $sort_key = $_GET['sort'] ?? 'manual_order';
       $sort_map = [
         'manual_order' => 'ORDER BY f.sort_order ASC',
@@ -810,11 +845,38 @@ if (isset($_GET['action'])) {
         'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
       ];
       $order_by = $sort_map[$sort_key] ?? $sort_map['manual_order'];
-      $stmt = $db->prepare("SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id FROM music m JOIN favorites f ON m.id = f.song_id WHERE f.user_id = ? " . $order_by . $limit_clause);
+      $stmt = $db->prepare("SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, 1 as is_favorite FROM music m JOIN favorites f ON m.id = f.song_id WHERE f.user_id = ? " . $order_by . $limit_clause);
       $stmt->execute([$user_id]);
-      echo json_encode($stmt->fetchAll());
+      send_json($stmt->fetchAll());
       break;
-    
+
+    case 'get_playlist_songs':
+      if (!$user_id) { send_json([]); }
+      $public_id = $_GET['public_id'];
+      $sort_key = $_GET['sort'] ?? 'manual_order';
+      $sort_map = [
+        'manual_order' => 'ORDER BY ps.sort_order ASC',
+        'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
+        'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+      ];
+      $order_by = $sort_map[$sort_key] ?? $sort_map['manual_order'];
+      
+      $stmt = $db->prepare("
+        SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
+        FROM music m
+        JOIN playlist_songs ps ON m.id = ps.song_id
+        JOIN playlists p ON ps.playlist_id = p.id
+        LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ?
+        WHERE p.public_id = ?
+        {$order_by} {$limit_clause}
+      ");
+      $stmt->execute([$user_id, $public_id]);
+      send_json($stmt->fetchAll());
+      break;
+
     case 'toggle_favorite':
       if (!$user_id) { http_response_code(403); exit; }
       $data = json_decode(file_get_contents('php://input'), true);
@@ -823,13 +885,13 @@ if (isset($_GET['action'])) {
       $stmt->execute([$user_id, $song_id]);
       if ($stmt->fetch()) {
         $db->prepare("DELETE FROM favorites WHERE user_id = ? AND song_id = ?")->execute([$user_id, $song_id]);
-        echo json_encode(['status' => 'removed', 'is_favorite' => false]);
+        send_json(['status' => 'removed', 'is_favorite' => false]);
       } else {
         $stmt = $db->prepare("SELECT MAX(sort_order) as max_order FROM favorites WHERE user_id = ?");
         $stmt->execute([$user_id]);
         $max_order = $stmt->fetchColumn() ?? 0;
         $db->prepare("INSERT INTO favorites (user_id, song_id, sort_order) VALUES (?, ?, ?)")->execute([$user_id, $song_id, $max_order + 1]);
-        echo json_encode(['status' => 'added', 'is_favorite' => true]);
+        send_json(['status' => 'added', 'is_favorite' => true]);
       }
       break;
 
@@ -844,11 +906,11 @@ if (isset($_GET['action'])) {
              ->execute([$index, $user_id, $song_id]);
         }
         $db->commit();
-        echo json_encode(['status' => 'success']);
+        send_json(['status' => 'success']);
       } catch (Exception $e) {
         $db->rollBack();
         http_response_code(500);
-        echo json_encode(['status' => 'error', 'message' => 'Failed to update order.']);
+        send_json(['status' => 'error', 'message' => 'Failed to update order.']);
       }
       break;
 
@@ -858,7 +920,7 @@ if (isset($_GET['action'])) {
       $param = $post_data['param'] ?? '';
       $sort = $post_data['sort'] ?? '';
 
-      if (in_array($view_type, ['artist_songs', 'album_songs', 'genre_songs'])) {
+      if (in_array($view_type, ['artist_songs', 'album_songs', 'genre_songs', 'playlist_songs'])) {
         $param = urldecode($param);
       }
 
@@ -868,14 +930,14 @@ if (isset($_GET['action'])) {
       $default_sort = 'artist_asc';
 
       switch ($view_type) {
-        case 'songs': break;
-        case 'profile_songs':
-          if (!$user_id) { echo json_encode([]); exit; }
+        case 'get_songs': break;
+        case 'get_profile_songs':
+          if (!$user_id) { send_json([]); }
           $conditions = "WHERE m.user_id = ?";
           $params[] = $user_id;
           break;
-        case 'favorites':
-          if (!$user_id) { echo json_encode([]); exit; }
+        case 'get_favorites':
+          if (!$user_id) { send_json([]); }
           $sql = "SELECT m.id FROM music m JOIN favorites f ON m.id = f.song_id ";
           $conditions = "WHERE f.user_id = ?";
           $params[] = $user_id;
@@ -896,70 +958,125 @@ if (isset($_GET['action'])) {
           $params[] = $param;
           $default_sort = 'artist_asc';
           break;
+        case 'playlist_songs':
+          $sql = "SELECT m.id FROM music m JOIN playlist_songs ps ON m.id = ps.song_id JOIN playlists p ON ps.playlist_id = p.id ";
+          $conditions = "WHERE p.public_id = ?";
+          $params[] = $param;
+          $default_sort = 'manual_order';
+          break;
         case 'search':
           $conditions = "WHERE m.title LIKE ? OR m.artist LIKE ? OR m.album LIKE ?";
           $query_param = '%' . $param . '%';
           $params = [$query_param, $query_param, $query_param];
           break;
         default:
-          echo json_encode([]); exit;
+          send_json([]);
       }
       $sort_map = [
-        'manual_order' => 'ORDER BY f.sort_order ASC',
+        'manual_order' => 'ORDER BY ps.sort_order ASC',
         'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
         'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
       ];
+      if ($view_type === 'get_favorites') {
+        $sort_map['manual_order'] = 'ORDER BY f.sort_order ASC';
+      }
       $order_by = $sort_map[$sort] ?? $sort_map[$default_sort];
       
       $stmt = $db->prepare($sql . $conditions . " " . $order_by);
       $stmt->execute($params);
-      echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
-      exit;
+      send_json($stmt->fetchAll(PDO::FETCH_COLUMN));
+      break;
 
     case 'get_artists':
       $stmt = $db->query("SELECT DISTINCT artist FROM music WHERE artist != '' AND artist IS NOT NULL ORDER BY artist COLLATE NOCASE");
-      echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
+      send_json($stmt->fetchAll(PDO::FETCH_COLUMN));
       break;
 
     case 'get_albums':
       $stmt = $db->query("SELECT album, artist, MAX(id) as id FROM music WHERE album != '' AND album IS NOT NULL GROUP BY album ORDER BY album COLLATE NOCASE");
-      echo json_encode($stmt->fetchAll());
+      send_json($stmt->fetchAll());
       break;
     
     case 'get_genres':
       $stmt = $db->query("SELECT DISTINCT genre FROM music WHERE genre != '' AND genre IS NOT NULL ORDER BY genre COLLATE NOCASE");
-      echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
+      send_json($stmt->fetchAll(PDO::FETCH_COLUMN));
       break;
     
     case 'get_all_genres':
       $stmt = $db->query("SELECT DISTINCT genre FROM music WHERE genre != '' AND genre IS NOT NULL ORDER BY genre COLLATE NOCASE");
-      echo json_encode($stmt->fetchAll(PDO::FETCH_COLUMN));
+      send_json($stmt->fetchAll(PDO::FETCH_COLUMN));
       break;
 
-    case 'get_view_details':
+    case 'get_view_data':
       $type = $_GET['type'] ?? '';
-      $name = $_GET['name'] ?? '';
-      if (empty($type) || empty($name) || !in_array($type, ['artist', 'album', 'genre'])) {
-        http_response_code(400); exit;
+      $name = rawurldecode($_GET['name'] ?? '');
+      $sort = $_GET['sort'] ?? 'artist_asc';
+      if (empty($type) || empty($name)) { http_response_code(400); exit; }
+      
+      $details = null;
+      $songs = [];
+
+      if ($type === 'playlist') {
+        $stmt_details = $db->prepare("
+          SELECT p.name, p.public_id, u.artist as creator,
+          (SELECT COUNT(*) FROM playlist_songs WHERE playlist_id = p.id) as song_count,
+          (SELECT SUM(m.duration) FROM music m JOIN playlist_songs ps ON m.id = ps.song_id WHERE ps.playlist_id = p.id) as total_duration,
+          (SELECT ps.song_id FROM playlist_songs ps WHERE ps.playlist_id = p.id ORDER BY ps.added_at DESC LIMIT 1) as image_id
+          FROM playlists p JOIN users u ON p.user_id = u.id
+          WHERE p.public_id = ?
+        ");
+        $stmt_details->execute([$name]);
+        $details = $stmt_details->fetch();
+        if ($details) {
+          $details['image_url'] = '?action=get_image&id=' . ($details['image_id'] ?? 0);
+        }
+        $sort_map = [
+          'manual_order' => 'ORDER BY ps.sort_order ASC', 'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC',
+          'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC', 'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC',
+          'year_desc' => 'ORDER BY m.year DESC', 'year_asc' => 'ORDER BY m.year ASC',
+        ];
+        $order_by = $sort_map[$sort] ?? $sort_map['manual_order'];
+        $stmt_songs = $db->prepare("
+          SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
+          FROM music m JOIN playlist_songs ps ON m.id = ps.song_id JOIN playlists p ON ps.playlist_id = p.id LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ?
+          WHERE p.public_id = ? {$order_by} {$limit_clause}
+        ");
+        $stmt_songs->execute([$user_id, $name]);
+        $songs = $stmt_songs->fetchAll();
+      } elseif (in_array($type, ['artist', 'album', 'genre'])) {
+        $field = $type;
+        $stmt_details = $db->prepare("SELECT COUNT(*) as song_count, SUM(duration) as total_duration, MAX(id) as image_id FROM music WHERE {$field} = ?");
+        $stmt_details->execute([$name]);
+        $details = $stmt_details->fetch();
+        $details['name'] = $name;
+        $details['image_url'] = '?action=get_image&id=' . ($details['image_id'] ?? 0);
+        $details['public_id'] = null;
+
+        $sort_map = [
+          'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC', 'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
+          'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC', 'year_desc' => 'ORDER BY m.year DESC', 'year_asc' => 'ORDER BY m.year ASC',
+        ];
+        $order_by = $sort_map[$sort] ?? $sort_map['artist_asc'];
+        $stmt_songs = $db->prepare("
+          SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
+          FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ?
+          WHERE m.{$field} = ? {$order_by} {$limit_clause}
+        ");
+        $stmt_songs->execute([$user_id, $name]);
+        $songs = $stmt_songs->fetchAll();
       }
-      $field = $type;
-      $stmt = $db->prepare("SELECT COUNT(*) as song_count, SUM(duration) as total_duration, MAX(id) as image_id FROM music WHERE {$field} = ?");
-      $stmt->execute([$name]);
-      $details = $stmt->fetch();
-      $details['name'] = $name;
-      $details['image_url'] = '?action=get_image&id=' . ($details['image_id'] ?? 0);
-      echo json_encode($details);
+      send_json(['details' => $details, 'songs' => $songs]);
       break;
 
     case 'search':
       $query = '%' . ($_GET['q'] ?? '') . '%';
-      $order_by = 'ORDER BY artist COLLATE NOCASE ASC, album COLLATE NOCASE ASC, title COLLATE NOCASE ASC';
-      $stmt = $db->prepare("SELECT id, title, artist, album, genre, duration, user_id FROM music WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? " . $order_by . " " . $limit_clause);
-      $stmt->execute([$query, $query, $query]);
-      echo json_encode($stmt->fetchAll());
+      $order_by = 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC';
+      $stmt = $db->prepare("SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? WHERE (m.title LIKE ? OR m.artist LIKE ? OR m.album LIKE ?) " . $order_by . " " . $limit_clause);
+      $stmt->execute([$user_id, $query, $query, $query]);
+      send_json($stmt->fetchAll());
       break;
 
     case 'get_song_data':
@@ -971,11 +1088,10 @@ if (isset($_GET['action'])) {
         $song['stream_url'] = '?action=get_stream&id=' . $song['id'];
         $song['image_url'] = '?action=get_image&id=' . $song['id'];
       }
-      echo json_encode($song);
+      send_json($song);
       break;
 
     case 'get_stream':
-      header_remove('Content-Type');
       $id = intval($_GET['id'] ?? 0);
       $stmt = $db->prepare("SELECT file FROM music WHERE id = ?");
       $stmt->execute([$id]);
@@ -1014,10 +1130,9 @@ if (isset($_GET['action'])) {
       } else {
         http_response_code(404);
       }
-      break;
+      exit;
 
     case 'get_image':
-      header_remove('Content-Type');
       $id = intval($_GET['id'] ?? 0);
       $stmt = $db->prepare("SELECT image FROM music WHERE id = ?");
       $stmt->execute([$id]);
@@ -1028,6 +1143,106 @@ if (isset($_GET['action'])) {
       } else {
         header('Content-Type: image/svg+xml');
         echo '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="#404040" class="bi bi-music-note" viewBox="0 0 16 16"><path d="M9 13c0 1.105-1.12 2-2.5 2S4 14.105 4 13s1.12-2 2.5-2 2.5.895 2.5 2"/><path fill-rule="evenodd" d="M9 3v10H8V3h1z"/><path d="M8 2.82a1 1 0 0 1 .804-.98l3-.6A1 1 0 0 1 13 2.22V4L8 5V2.82z"/></svg>';
+      }
+      exit;
+
+    case 'get_user_playlists':
+      if (!$user_id) { send_json([]); }
+      $stmt = $db->prepare("
+        SELECT p.id, p.name, p.public_id, COUNT(ps.song_id) as song_count,
+        (SELECT ps.song_id FROM playlist_songs ps WHERE ps.playlist_id = p.id ORDER BY ps.added_at DESC LIMIT 1) as image_id
+        FROM playlists p LEFT JOIN playlist_songs ps ON p.id = ps.playlist_id
+        WHERE p.user_id = ?
+        GROUP BY p.id, p.name, p.public_id
+        ORDER BY p.name COLLATE NOCASE ASC
+      ");
+      $stmt->execute([$user_id]);
+      send_json($stmt->fetchAll());
+      break;
+
+    case 'create_playlist':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $name = trim(htmlspecialchars($data['name'] ?? '', ENT_QUOTES, 'UTF-8'));
+      if (empty($name)) {
+        http_response_code(400); send_json(['status' => 'error', 'message' => 'Playlist name cannot be empty.']);
+      }
+      $public_id = bin2hex(random_bytes(8));
+      $stmt = $db->prepare("INSERT INTO playlists (user_id, name, public_id) VALUES (?, ?, ?)");
+      $stmt->execute([$user_id, $name, $public_id]);
+      send_json(['status' => 'success', 'message' => 'Playlist created.']);
+      break;
+
+    case 'add_to_playlist':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $playlist_id = intval($data['playlist_id']);
+      $song_id = intval($data['song_id']);
+      
+      $stmt_owner = $db->prepare("SELECT id FROM playlists WHERE id = ? AND user_id = ?");
+      $stmt_owner->execute([$playlist_id, $user_id]);
+      if (!$stmt_owner->fetch()) {
+        http_response_code(403); send_json(['status' => 'error', 'message' => 'Not your playlist.']);
+      }
+
+      $stmt_exists = $db->prepare("SELECT song_id FROM playlist_songs WHERE playlist_id = ? AND song_id = ?");
+      $stmt_exists->execute([$playlist_id, $song_id]);
+      if ($stmt_exists->fetch()) {
+        send_json(['status' => 'exists', 'message' => 'Song is already in this playlist.']);
+      }
+
+      $stmt_order = $db->prepare("SELECT MAX(sort_order) as max_order FROM playlist_songs WHERE playlist_id = ?");
+      $stmt_order->execute([$playlist_id]);
+      $max_order = $stmt_order->fetchColumn() ?? 0;
+
+      $stmt = $db->prepare("INSERT INTO playlist_songs (playlist_id, song_id, sort_order) VALUES (?, ?, ?)");
+      $stmt->execute([$playlist_id, $song_id, $max_order + 1]);
+      send_json(['status' => 'success', 'message' => 'Added to playlist.']);
+      break;
+
+    case 'remove_from_playlist':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $public_id = $data['playlist_public_id'];
+      $song_id = intval($data['song_id']);
+
+      $stmt_owner = $db->prepare("SELECT id FROM playlists WHERE public_id = ? AND user_id = ?");
+      $stmt_owner->execute([$public_id, $user_id]);
+      $playlist = $stmt_owner->fetch();
+      if (!$playlist) {
+        http_response_code(403); send_json(['status' => 'error', 'message' => 'Permission denied.']);
+      }
+
+      $stmt = $db->prepare("DELETE FROM playlist_songs WHERE playlist_id = ? AND song_id = ?");
+      $stmt->execute([$playlist['id'], $song_id]);
+      send_json(['status' => 'success', 'message' => 'Song removed from playlist.']);
+      break;
+
+    case 'update_playlist_order':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $public_id = $data['playlist_public_id'];
+      $ordered_ids = $data['ids'];
+
+      $stmt = $db->prepare("SELECT id FROM playlists WHERE public_id = ? AND user_id = ?");
+      $stmt->execute([$public_id, $user_id]);
+      $playlist = $stmt->fetch();
+      if (!$playlist) {
+        http_response_code(403); send_json(['status' => 'error', 'message' => 'Permission denied.']);
+      }
+
+      $db->beginTransaction();
+      try {
+        foreach ($ordered_ids as $index => $song_id) {
+          $db->prepare("UPDATE playlist_songs SET sort_order = ? WHERE playlist_id = ? AND song_id = ?")
+             ->execute([$index, $playlist['id'], $song_id]);
+        }
+        $db->commit();
+        send_json(['status' => 'success']);
+      } catch (Exception $e) {
+        $db->rollBack();
+        http_response_code(500);
+        send_json(['status' => 'error', 'message' => 'Failed to update order.']);
       }
       break;
   }
@@ -1434,7 +1649,7 @@ function scan_music_directory($db) {
         background-color: var(--ytm-surface-2);
         border-radius: 4px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        z-index: 1050;
+        z-index: 1080;
         list-style: none;
         padding: 0.5rem 0;
         min-width: 220px;
@@ -1472,7 +1687,6 @@ function scan_music_directory($db) {
         display: flex;
         align-items: center;
         gap: 1rem;
-        cursor: pointer;
         min-width: 0;
       }
       .player-bar .track-info-art {
@@ -1686,7 +1900,18 @@ function scan_music_directory($db) {
           padding: 0.5rem 1rem;
           gap: 0;
         }
-        .player-bar .track-info { order: 1; width: 100%;}
+        .player-bar .track-info.d-md-none {
+          order: 1;
+          width: 100%;
+          cursor: pointer;
+          justify-content: space-between;
+        }
+        .player-bar .track-info-text {
+          flex-grow: 1;
+        }
+        #player-more-btn-mobile {
+          flex-shrink: 0;
+        }
         .player-bar .player-controls { display: contents; }
         .player-bar .playback-bar { order: 2; width: 100%; margin-top: 8px; }
         .player-bar .player-buttons-mobile {
@@ -1744,15 +1969,102 @@ function scan_music_directory($db) {
           align-items: center;
           text-align: center;
         }
-        .view-details-header-info .name {
-          font-size: 1.75rem;
-        }
       }
       .loader {
         text-align: center;
         padding: 3rem;
         font-size: 1.2rem;
         color: var(--ytm-secondary-text);
+      }
+      .player-modal-content {
+        background-color: var(--ytm-bg);
+        color: var(--ytm-primary-text);
+      }
+      .player-modal-header {
+        border-bottom: 0;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .player-modal-header .player-btn {
+        padding: 0.5rem;
+        color: var(--ytm-primary-text);
+      }
+      .player-modal-header .player-btn .bi {
+        font-size: 1.75rem;
+      }
+      .player-modal-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+        padding: 1rem 2rem;
+      }
+      .player-modal-art-wrapper {
+        flex-grow: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 2rem;
+      }
+      #player-modal-art {
+        width: 98%;
+        max-width: 400px;
+        aspect-ratio: 1/1;
+        object-fit: cover;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      }
+      .player-modal-track-info {
+        text-align: left;
+        margin-bottom: 1rem;
+      }
+      .player-modal-track-info .title {
+        font-weight: 700;
+        font-size: 1.5rem;
+      }
+      .player-modal-track-info .artist {
+        color: var(--ytm-secondary-text);
+        font-size: 1rem;
+      }
+      .player-modal-progress {
+        width: 100%;
+        margin-bottom: 1rem;
+      }
+      .player-modal-progress .time-stamps {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: var(--ytm-secondary-text);
+        margin-top: 0.5rem;
+      }
+      .player-modal-controls {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        margin-bottom: 2rem;
+      }
+      .player-modal-controls .player-btn {
+        color: var(--ytm-primary-text);
+      }
+      .player-modal-controls .player-btn .bi {
+        font-size: 2rem;
+      }
+      .player-modal-controls .play-btn {
+        width: 70px;
+        height: 70px;
+      }
+      .player-modal-controls .play-btn .bi {
+        font-size: 3.5rem;
+      }
+      .player-modal-extra-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .add-to-playlist-item {
+        cursor: pointer;
+      }
+      .add-to-playlist-item:hover {
+        background-color: var(--ytm-surface-2);
       }
     </style>
   </head>
@@ -1766,30 +2078,34 @@ function scan_music_directory($db) {
         <div class="offcanvas-body d-flex flex-column">
           <div class="logo d-none d-md-block">PHP<span>Music</span></div>
           
-          <a href="#" class="nav-link active" data-view="songs">
+          <a href="#" class="nav-link active" data-view="get_songs">
             <i class="bi bi-music-note-list"></i>
             <span>All Songs</span>
           </a>
-          <a href="#" class="nav-link" data-view="albums">
+          <a href="#" class="nav-link" data-view="get_albums">
             <i class="bi bi-disc-fill"></i>
             <span>Albums</span>
           </a>
-          <a href="#" class="nav-link" data-view="artists">
+          <a href="#" class="nav-link" data-view="get_artists">
             <i class="bi bi-people-fill"></i>
             <span>Artists</span>
           </a>
-          <a href="#" class="nav-link" data-view="genres">
+          <a href="#" class="nav-link" data-view="get_genres">
             <i class="bi bi-tags-fill"></i>
             <span>Genres</span>
           </a>
 
-          <a href="#" class="nav-link logged-in-only" data-view="profile_songs">
+          <a href="#" class="nav-link logged-in-only" data-view="get_profile_songs">
             <i class="bi bi-person-circle"></i>
             <span>My Music</span>
           </a>
-          <a href="#" class="nav-link logged-in-only" data-view="favorites">
+          <a href="#" class="nav-link logged-in-only" data-view="get_favorites">
             <i class="bi bi-heart-fill"></i>
             <span>Favorites</span>
+          </a>
+          <a href="#" class="nav-link logged-in-only" data-view="get_user_playlists">
+            <i class="bi bi-music-note-beamed"></i>
+            <span>Playlists</span>
           </a>
           
           <hr class="text-secondary">
@@ -1881,6 +2197,7 @@ function scan_music_directory($db) {
             <div class="title" id="player-title-mobile">Song Title</div>
             <div class="artist" id="player-artist-mobile">Artist Name</div>
           </div>
+          <button class="player-btn" id="player-more-btn-mobile" title="More"><i class="bi bi-three-dots-vertical"></i></button>
         </div>
         <div class="playback-bar">
           <span class="time" id="current-time">0:00</span>
@@ -1906,10 +2223,53 @@ function scan_music_directory($db) {
         </div>
       </div>
       <div class="extra-controls d-none d-md-flex">
-         <button class="player-btn logged-in-only" id="favorite-btn-desktop" title="Favorite"></button>
+         <button class="player-btn" id="player-more-btn-desktop" title="More"><i class="bi bi-three-dots-vertical"></i></button>
       </div>
     </div>
     <ul class="context-menu" id="context-menu"></ul>
+
+    <div class="modal fade" id="player-modal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content player-modal-content">
+          <div class="modal-header player-modal-header">
+            <button type="button" class="btn player-btn" data-bs-dismiss="modal" aria-label="Close">
+              <i class="bi bi-chevron-down"></i>
+            </button>
+            <button type="button" class="btn player-btn" id="player-modal-more-btn" title="More">
+              <i class="bi bi-three-dots-vertical"></i>
+            </button>
+          </div>
+          <div class="modal-body player-modal-body">
+            <div class="player-modal-art-wrapper">
+              <img src="" id="player-modal-art" alt="Album Art">
+            </div>
+            <div class="player-modal-track-info">
+              <h3 id="player-modal-title" class="title">Song Title</h3>
+              <p id="player-modal-artist" class="artist">Artist Name</p>
+            </div>
+            <div class="player-modal-progress">
+              <div class="progress-bar-container" id="player-modal-progress-container">
+                <div class="progress-bar-bg"></div>
+                <div class="progress-bar-fg" id="player-modal-progress-bar"></div>
+              </div>
+              <div class="time-stamps">
+                <span id="player-modal-current-time">0:00</span>
+                <span id="player-modal-time-left">0:00</span>
+              </div>
+            </div>
+            <div class="player-modal-controls">
+                <button class="player-btn" id="player-modal-shuffle-btn" title="Shuffle"></button>
+                <button class="player-btn" id="player-modal-prev-btn" title="Previous"></button>
+                <button class="player-btn play-btn" id="player-modal-play-pause-btn" title="Play"></button>
+                <button class="player-btn" id="player-modal-next-btn" title="Next"></button>
+                <button class="player-btn" id="player-modal-repeat-btn" title="Repeat"></button>
+            </div>
+             <div class="player-modal-extra-controls">
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="modal fade" id="login-modal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
@@ -2020,6 +2380,38 @@ function scan_music_directory($db) {
         </div>
       </div>
     </div>
+    <div class="modal fade" id="create-playlist-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header border-0">
+            <h5 class="modal-title">Create New Playlist</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="create-playlist-form">
+              <div class="mb-3">
+                <label for="playlist-name" class="form-label">Playlist Name</label>
+                <input type="text" class="form-control" id="playlist-name-input" required>
+              </div>
+              <button type="submit" class="btn btn-danger w-100">Create</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal fade" id="add-to-playlist-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header border-0">
+            <h5 class="modal-title">Add to Playlist</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="add-to-playlist-modal-body">
+          </div>
+        </div>
+      </div>
+    </div>
+
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -2041,39 +2433,40 @@ function scan_music_directory($db) {
         const scanProgressBar = document.getElementById('scan-progress-bar-container');
         const contextMenu = document.getElementById('context-menu');
         const playerBar = document.getElementById('player-bar');
-        const progressContainer = document.getElementById('progress-container');
-        const progressBar = document.getElementById('progress-bar');
-        const currentTimeEl = document.getElementById('current-time');
-        const timeLeftEl = document.getElementById('time-left');
         const infiniteScrollLoader = document.getElementById('infinite-scroll-loader');
         const installPwaBtn = document.getElementById('install-pwa-btn');
         const clearCacheBtn = document.getElementById('clear-cache-btn');
         const genresModalEl = document.getElementById('genres-modal');
         const genresModal = genresModalEl ? new bootstrap.Modal(genresModalEl) : null;
         const genresModalBody = document.getElementById('genres-modal-body');
+        const createPlaylistModalEl = document.getElementById('create-playlist-modal');
+        const createPlaylistModal = createPlaylistModalEl ? new bootstrap.Modal(createPlaylistModalEl) : null;
+        const addToPlaylistModalEl = document.getElementById('add-to-playlist-modal');
+        const addToPlaylistModal = addToPlaylistModalEl ? new bootstrap.Modal(addToPlaylistModalEl) : null;
+        const addToPlaylistModalBody = document.getElementById('add-to-playlist-modal-body');
 
-        const playerArtDesktop = document.getElementById('player-art-desktop');
-        const playerTitleDesktop = document.getElementById('player-title-desktop');
-        const playerArtistDesktop = document.getElementById('player-artist-desktop');
-        const playerArtMobile = document.getElementById('player-art-mobile');
-        const playerTitleMobile = document.getElementById('player-title-mobile');
-        const playerArtistMobile = document.getElementById('player-artist-mobile');
-        
-        const playPauseBtnDesktop = document.getElementById('play-pause-btn-desktop');
-        const playPauseBtnMobile = document.getElementById('play-pause-btn-mobile');
-        const prevBtnDesktop = document.getElementById('prev-btn-desktop');
-        const nextBtnDesktop = document.getElementById('next-btn-desktop');
-        const shuffleBtnDesktop = document.getElementById('shuffle-btn-desktop');
-        const repeatBtnDesktop = document.getElementById('repeat-btn-desktop');
-        const favoriteBtnDesktop = document.getElementById('favorite-btn-desktop');
-        
-        const prevBtnMobile = document.getElementById('prev-btn-mobile');
-        const nextBtnMobile = document.getElementById('next-btn-mobile');
-        const shuffleBtnMobile = document.getElementById('shuffle-btn-mobile');
-        const repeatBtnMobile = document.getElementById('repeat-btn-mobile');
+        const playerTrackInfoMobile = document.querySelector('.player-bar .track-info.d-md-none');
+        const playerModalEl = document.getElementById('player-modal');
+        const playerModal = playerModalEl ? new bootstrap.Modal(playerModalEl) : null;
 
+        const playerElements = {
+          art: [document.getElementById('player-art-desktop'), document.getElementById('player-art-mobile'), document.getElementById('player-modal-art')],
+          title: [document.getElementById('player-title-desktop'), document.getElementById('player-title-mobile'), document.getElementById('player-modal-title')],
+          artist: [document.getElementById('player-artist-desktop'), document.getElementById('player-artist-mobile'), document.getElementById('player-modal-artist')],
+          currentTime: [document.getElementById('current-time'), document.getElementById('player-modal-current-time')],
+          timeLeft: [document.getElementById('time-left'), document.getElementById('player-modal-time-left')],
+          progress: [document.getElementById('progress-bar'), document.getElementById('player-modal-progress-bar')],
+          progressContainer: [document.getElementById('progress-container'), document.getElementById('player-modal-progress-container')],
+          playPauseBtn: [document.getElementById('play-pause-btn-desktop'), document.getElementById('play-pause-btn-mobile'), document.getElementById('player-modal-play-pause-btn')],
+          prevBtn: [document.getElementById('prev-btn-desktop'), document.getElementById('prev-btn-mobile'), document.getElementById('player-modal-prev-btn')],
+          nextBtn: [document.getElementById('next-btn-desktop'), document.getElementById('next-btn-mobile'), document.getElementById('player-modal-next-btn')],
+          shuffleBtn: [document.getElementById('shuffle-btn-desktop'), document.getElementById('shuffle-btn-mobile'), document.getElementById('player-modal-shuffle-btn')],
+          repeatBtn: [document.getElementById('repeat-btn-desktop'), document.getElementById('repeat-btn-mobile'), document.getElementById('player-modal-repeat-btn')],
+          moreBtn: [document.getElementById('player-more-btn-desktop'), document.getElementById('player-more-btn-mobile'), document.getElementById('player-modal-more-btn')]
+        };
+        
         const audio = new Audio();
-        let currentView = { type: 'songs', param: '', sort: 'artist_asc' };
+        let currentView = { type: 'get_songs', param: '', sort: 'artist_asc' };
         let currentUser = null;
         let currentSong = null;
         let queue = [];
@@ -2085,7 +2478,9 @@ function scan_music_directory($db) {
         let scanInterval;
         let deferredInstallPrompt = null;
         let sortable = null;
+        let songIdForPlaylist = null;
         
+        const PAGE_SIZE = 25;
         let currentPage = 1;
         let isLoadingMore = false;
         let allContentloaded = false;
@@ -2178,16 +2573,21 @@ function scan_music_directory($db) {
         };
         
         const renderViewDetailsHeader = (details, type) => {
-          const totalDurationFormatted = formatTime(details.total_duration);
+          let typeText = type;
+          let statsText = `${details.song_count} songs &bull; ${formatTime(details.total_duration)}`;
+          if (type === 'playlist') {
+            typeText = `Playlist by ${details.creator}`;
+          }
+
           const headerHTML = `
             <div class="view-details-header">
               <img src="${details.image_url}" alt="${details.name}">
               <div class="view-details-header-info">
-                <div class="type">${type}</div>
+                <div class="type">${typeText}</div>
                 <h2 class="name text-truncate text-truncate-width">${details.name}</h2>
-                <div class="stats">${details.song_count} songs &bull; ${totalDurationFormatted}</div>
+                <div class="stats">${statsText}</div>
               </div>
-              <button class="btn btn-outline-light share-view-btn" title="Share ${type}">
+              <button class="btn btn-outline-light share-view-btn" title="Share ${type}" data-share-id="${details.public_id || encodeURIComponent(details.name)}" data-share-name="${encodeURIComponent(details.name)}">
                 <i class="bi bi-share-fill"></i> <span class="d-none d-md-inline">Share</span>
               </button>
             </div>`;
@@ -2222,18 +2622,25 @@ function scan_music_directory($db) {
             contentArea.insertAdjacentHTML('beforeend', header);
             contentArea.appendChild(songList);
           }
+          
+          const escapeAttr = (str) => str ? String(str).replace(/'/g, "&apos;").replace(/"/g, "&quot;") : '';
 
           const songsHTML = songs.map((song) => {
-            const safeTitle = song.title.replace(/'/g, "&apos;").replace(/"/g, "&quot;");
             return `
-            <div class="song-item" data-song-id="${song.id}">
-              <img src="?action=get_image&id=${song.id}" class="song-thumb" loading="lazy" alt="${safeTitle}">
+            <div class="song-item" 
+              data-song-id="${song.id}" 
+              data-is-favorite="${song.is_favorite == 1 ? '1' : '0'}"
+              data-song-title="${escapeAttr(song.title)}"
+              data-song-artist="${escapeAttr(song.artist)}"
+              data-song-album="${escapeAttr(song.album)}"
+              data-song-user-id="${song.user_id}">
+              <img src="?action=get_image&id=${song.id}" class="song-thumb" loading="lazy" alt="${escapeAttr(song.title)}">
               <div class="song-title-wrapper"><div class="song-title">${song.title}</div></div>
               <div class="song-artist" data-artist="${encodeURIComponent(song.artist)}">${song.artist}</div>
               <div class="song-album" data-album="${encodeURIComponent(song.album)}">${song.album}</div>
               <div class="song-duration d-none d-md-block">${formatTime(song.duration)}</div>
               <div class="song-more">
-                <button class="more-btn" data-song-id="${song.id}" data-song-title="${encodeURIComponent(song.title)}" data-user-id="${song.user_id}" data-artist="${encodeURIComponent(song.artist)}" data-album="${encodeURIComponent(song.album)}">
+                <button class="more-btn" data-song-id="${song.id}">
                   <i class="bi bi-three-dots-vertical"></i>
                 </button>
               </div>
@@ -2246,7 +2653,7 @@ function scan_music_directory($db) {
           
           songList.insertAdjacentHTML('beforeend', songsHTML);
 
-          if (currentView.type === 'favorites' && currentView.sort === 'manual_order') {
+          if (currentView.type === 'get_favorites' && currentView.sort === 'manual_order') {
             sortable = Sortable.create(songList, {
               animation: 150,
               ghostClass: 'ghost',
@@ -2261,13 +2668,32 @@ function scan_music_directory($db) {
               }
             });
           }
+
+          if (currentView.type === 'playlist_songs' && currentView.sort === 'manual_order') {
+            sortable = Sortable.create(songList, {
+              animation: 150,
+              ghostClass: 'ghost',
+              onEnd: async (evt) => {
+                const songItems = Array.from(songList.querySelectorAll('.song-item'));
+                const newOrderIds = songItems.map(item => item.dataset.songId);
+                await fetchData('?action=update_playlist_order', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ids: newOrderIds, playlist_public_id: decodeURIComponent(currentView.param) })
+                });
+              }
+            });
+          }
         };
 
         const renderGrid = (items, type, append = false) => {
           if (!append) contentArea.innerHTML = '';
+          if (type === 'get_user_playlists' && !append) {
+            contentArea.innerHTML = `<div class="p-3"><button class="btn btn-danger" id="create-new-playlist-btn"><i class="bi bi-plus-lg"></i> Create New Playlist</button></div>`;
+          }
           if (!items || items.length === 0) {
-            if (!append) {
-              contentArea.innerHTML = `<div class="text-center p-5 text-secondary">No ${type}s found.</div>`;
+            if (!append && type !== 'get_user_playlists') {
+              contentArea.innerHTML += `<div class="text-center p-5 text-secondary">No ${type.replace('get_','')} found.</div>`;
             }
             allContentloaded = true;
             hideLoader();
@@ -2280,18 +2706,33 @@ function scan_music_directory($db) {
             grid.className = 'row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 row-cols-xl-6 g-4';
             contentArea.appendChild(grid);
           }
-
+          
           const itemsHTML = items.map(item => {
-              const name = (typeof item === 'object') ? item.album : item;
-              const subtext = (typeof item === 'object') ? item.artist : null;
-              const imageId = (typeof item === 'object') ? item.id : null;
-              const dataType = type.slice(0, -1);
-              const icon = (type === 'artists') ? 'bi-person-fill' : (type === 'genres') ? 'bi-tag-fill' : '';
+              let name, subtext, imageId, dataType, dataValue, icon;
+              if (type === 'get_albums') {
+                name = item.album;
+                subtext = item.artist;
+                imageId = item.id;
+                dataType = 'album';
+                dataValue = name;
+              } else if (type === 'get_user_playlists') {
+                name = item.name;
+                subtext = `${item.song_count} songs`;
+                imageId = item.image_id;
+                dataType = 'playlist';
+                dataValue = item.public_id;
+              } else {
+                name = item;
+                subtext = null;
+                dataType = type.replace('get_','').slice(0, -1);
+                dataValue = name;
+                icon = (type === 'get_artists') ? 'bi-person-fill' : 'bi-tag-fill';
+              }
               
-              if (type === 'albums') {
+              if (type === 'get_albums' || type === 'get_user_playlists') {
                 return `<div class="col">
-                  <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(name)}" style="cursor: pointer;">
-                    <img src="?action=get_image&id=${imageId}" class="card-img-top rounded" alt="${name}" style="aspect-ratio: 1/1; object-fit: cover; background-color: var(--ytm-surface-2);">
+                  <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(dataValue)}" style="cursor: pointer;">
+                    <img src="?action=get_image&id=${imageId || 0}" class="card-img-top rounded" alt="${name}" style="aspect-ratio: 1/1; object-fit: cover; background-color: var(--ytm-surface-2);">
                     <div class="card-body px-0 py-2">
                       <h5 class="card-title fs-6 fw-normal text-truncate">${name}</h5>
                       ${subtext ? `<p class="card-text small text-secondary text-truncate">${subtext}</p>` : ''}
@@ -2300,7 +2741,7 @@ function scan_music_directory($db) {
                 </div>`;
               } else {
                 return `<div class="col">
-                  <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(name)}" style="cursor: pointer;">
+                  <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(dataValue)}" style="cursor: pointer;">
                     <div class="d-flex align-items-center justify-content-center rounded" style="aspect-ratio: 1/1; background-color: var(--ytm-surface-2);">
                       <i class="bi ${icon}" style="font-size: 4rem; color: var(--ytm-secondary-text);"></i>
                     </div>
@@ -2317,12 +2758,12 @@ function scan_music_directory($db) {
         
         const setupSortOptions = (viewType) => {
           sortControls.classList.add('d-none');
-          if (['songs', 'favorites', 'artist_songs', 'album_songs', 'genre_songs', 'profile_songs', 'search'].includes(viewType)) {
+          if (['get_songs', 'get_favorites', 'artist_songs', 'album_songs', 'genre_songs', 'get_profile_songs', 'search', 'playlist_songs'].includes(viewType)) {
             let options = {
               'artist_asc': 'Artist', 'title_asc': 'Title', 'album_asc': 'Album',
               'year_desc': 'Year (Newest)', 'year_asc': 'Year (Oldest)',
             };
-            if (viewType === 'favorites') {
+            if (viewType === 'get_favorites' || viewType === 'playlist_songs') {
               options = { 'manual_order': 'My Order', ...options };
             }
             if (viewType === 'artist_songs') delete options.artist_asc;
@@ -2343,18 +2784,22 @@ function scan_music_directory($db) {
           showLoader(false);
           
           currentPage++;
-          let url, data;
+          let data;
           const { type, param, sort } = currentView;
           
-          const params = new URLSearchParams({
-            page: currentPage,
-            sort: sort
-          });
+          const params = new URLSearchParams({ page: currentPage, sort: sort });
 
           switch(type) {
-            case 'songs':
-              url = `?action=get_songs&${params.toString()}`;
-              data = await fetchData(url);
+            case 'get_songs':
+            case 'get_profile_songs':
+            case 'get_favorites':
+              data = await fetchData(`?action=${type}&${params.toString()}`);
+              renderSongs(data, true);
+              break;
+            case 'search':
+              params.delete('sort');
+              params.append('q', param);
+              data = await fetchData(`?action=search&${params.toString()}`);
               renderSongs(data, true);
               break;
             case 'artist_songs':
@@ -2363,32 +2808,19 @@ function scan_music_directory($db) {
               const filterType = type.split('_')[0];
               const filterValue = decodeURIComponent(param);
               params.append(filterType, filterValue);
-              url = `?action=get_songs&${params.toString()}`;
-              data = await fetchData(url);
+              data = await fetchData(`?action=get_songs&${params.toString()}`);
               renderSongs(data, true);
               break;
-            case 'profile_songs':
-              url = `?action=get_profile_songs&${params.toString()}`;
-              data = await fetchData(url);
-              renderSongs(data, true);
-              break;
-            case 'favorites':
-              url = `?action=get_favorites&${params.toString()}`;
-              data = await fetchData(url);
-              renderSongs(data, true);
-              break;
-            case 'search':
-              params.delete('sort');
-              params.append('q', param);
-              url = `?action=search&${params.toString()}`;
-              data = await fetchData(url);
+            case 'playlist_songs':
+              params.append('public_id', decodeURIComponent(param));
+              data = await fetchData(`?action=get_playlist_songs&${params.toString()}`);
               renderSongs(data, true);
               break;
             default:
               allContentloaded = true;
           }
           
-          if (!data || data.length < 25) {
+          if (!data || data.length < PAGE_SIZE) {
             allContentloaded = true;
           }
 
@@ -2407,69 +2839,67 @@ function scan_music_directory($db) {
           setupSortOptions(currentView.type);
           
           let data;
-          let viewName = currentView.type.charAt(0).toUpperCase() + currentView.type.slice(1);
-          let endpoint;
           const params = new URLSearchParams({ sort: currentView.sort, page: 1 });
           
           switch (currentView.type) {
-            case 'songs':
+            case 'get_songs':
               updateContentTitle('All Songs');
-              endpoint = `?action=get_songs&${params.toString()}`;
-              data = await fetchData(endpoint);
+              data = await fetchData(`?action=get_songs&${params.toString()}`);
               renderSongs(data, false);
               break;
-            case 'profile_songs':
+            case 'get_profile_songs':
               updateContentTitle('My Music');
-              endpoint = `?action=get_profile_songs&${params.toString()}`;
-              data = await fetchData(endpoint);
+              data = await fetchData(`?action=get_profile_songs&${params.toString()}`);
               renderSongs(data, false);
               break;
-            case 'favorites':
+            case 'get_favorites':
               updateContentTitle('Favorites');
-              endpoint = `?action=get_favorites&${params.toString()}`;
-              data = await fetchData(endpoint);
+              data = await fetchData(`?action=get_favorites&${params.toString()}`);
               renderSongs(data, false);
               break;
-            case 'albums':
-            case 'artists':
-            case 'genres':
+            case 'get_albums':
+            case 'get_artists':
+            case 'get_genres':
+            case 'get_user_playlists':
               allContentloaded = true;
-              updateContentTitle(viewName);
-              endpoint = `?action=get_${currentView.type}`;
-              data = await fetchData(endpoint);
+              let title = currentView.type.replace('get_', '');
+              title = title.charAt(0).toUpperCase() + title.slice(1);
+              if (title === 'User_playlists') title = 'Playlists';
+              updateContentTitle(title);
+              data = await fetchData(`?action=${currentView.type}`);
               renderGrid(data, currentView.type, false);
               break;
             case 'artist_songs':
             case 'album_songs':
             case 'genre_songs':
+            case 'playlist_songs':
               const type = currentView.type.split('_')[0];
-              const name = decodeURIComponent(currentView.param);
-              updateContentTitle(name, false);
-              const details = await fetchData(`?action=get_view_details&type=${type}&name=${encodeURIComponent(name)}`);
-              contentArea.innerHTML = '';
-              if (details) renderViewDetailsHeader(details, type);
+              const name_param = currentView.param;
+              updateContentTitle('', false);
+
+              const viewData = await fetchData(`?action=get_view_data&type=${type}&name=${name_param}&sort=${currentView.sort}&page=1`);
               
-              params.append(type, name);
-              endpoint = `?action=get_songs&${params.toString()}`;
-              data = await fetchData(endpoint);
-              renderSongs(data, false);
+              contentArea.innerHTML = '';
+              if (viewData && viewData.details) {
+                renderViewDetailsHeader(viewData.details, type);
+                renderSongs(viewData.songs, false);
+                data = viewData.songs;
+              } else {
+                contentArea.innerHTML = `<div class="text-center p-5 text-secondary">Error loading view.</div>`;
+              }
               break;
             case 'search':
               updateContentTitle(`Search: "${currentView.param}"`);
               params.delete('sort');
               params.append('q', currentView.param);
-              endpoint = `?action=search&${params.toString()}`;
-              data = await fetchData(endpoint);
+              data = await fetchData(`?action=search&${params.toString()}`);
               renderSongs(data, false);
               break;
           }
 
-          if (['songs', 'profile_songs', 'favorites', 'artist_songs', 'album_songs', 'genre_songs', 'search'].includes(currentView.type)) {
-            if (!data || data.length < 25) {
-              allContentloaded = true;
-            }
+          if (data && data.length < PAGE_SIZE) {
+            allContentloaded = true;
           }
-
           if (viewConfig.highlight) {
             setTimeout(() => {
               const songToHighlight = contentArea.querySelector(`.song-item[data-song-id="${viewConfig.highlight}"]`);
@@ -2504,6 +2934,8 @@ function scan_music_directory($db) {
             navigator.mediaSession.setActionHandler('pause', togglePlayPause);
             navigator.mediaSession.setActionHandler('previoustrack', playPrev);
             navigator.mediaSession.setActionHandler('nexttrack', playNext);
+            navigator.mediaSession.setActionHandler('seekbackward', () => { audio.currentTime = Math.max(0, audio.currentTime - 10); });
+            navigator.mediaSession.setActionHandler('seekforward', () => { audio.currentTime = Math.min(audio.duration, audio.currentTime + 10); });
           }
         };
 
@@ -2514,17 +2946,18 @@ function scan_music_directory($db) {
             document.body.classList.add('player-visible');
           }
           const imageUrl = `?action=get_image&id=${currentSong.id}`;
-          [playerArtDesktop, playerArtMobile].forEach(el => el.src = imageUrl);
-          [playerTitleDesktop, playerTitleMobile].forEach(el => el.textContent = currentSong.title);
-          [playerArtistDesktop, playerArtistMobile].forEach(el => el.textContent = currentSong.artist);
+          playerElements.art.forEach(el => el.src = imageUrl);
+          playerElements.title.forEach(el => el.textContent = currentSong.title);
+          playerElements.artist.forEach(el => el.textContent = currentSong.artist);
+
           document.title = `${currentSong.title} • ${currentSong.artist}`;
           updatePlayPauseIcons();
-          updateFavoriteIcons(currentSong.is_favorite);
+          updateFavoriteIcons(currentSong.is_favorite == 1);
         };
 
         const updatePlayPauseIcons = () => {
           const icon = isPlaying ? ICONS.pause : ICONS.play;
-          [playPauseBtnDesktop, playPauseBtnMobile].forEach(btn => {
+          playerElements.playPauseBtn.forEach(btn => {
             btn.innerHTML = icon;
             btn.title = isPlaying ? "Pause" : "Play";
           });
@@ -2535,30 +2968,37 @@ function scan_music_directory($db) {
         
         const updateRepeatIcons = () => {
           let icon = ICONS.repeat, title = "Repeat Off";
-          [repeatBtnDesktop, repeatBtnMobile].forEach(btn => btn.classList.remove('active'));
+          playerElements.repeatBtn.forEach(btn => btn.classList.remove('active'));
           if (repeatMode === 'one') {
             icon = ICONS.repeatOne; title = "Repeat One";
-            [repeatBtnDesktop, repeatBtnMobile].forEach(btn => btn.classList.add('active'));
+            playerElements.repeatBtn.forEach(btn => btn.classList.add('active'));
           } else if (repeatMode === 'all') {
             title = "Repeat All";
-            [repeatBtnDesktop, repeatBtnMobile].forEach(btn => btn.classList.add('active'));
+            playerElements.repeatBtn.forEach(btn => btn.classList.add('active'));
           }
-          [repeatBtnDesktop, repeatBtnMobile].forEach(btn => {
+          playerElements.repeatBtn.forEach(btn => {
             btn.innerHTML = icon; btn.title = title;
           });
         };
         
         const updateShuffleButtons = () => {
-          [shuffleBtnDesktop, shuffleBtnMobile].forEach(btn => {
+          playerElements.shuffleBtn.forEach(btn => {
             btn.classList.toggle('active', isShuffle);
             btn.title = isShuffle ? "Shuffle On" : "Shuffle Off";
           });
         };
         
         const updateFavoriteIcons = (isFav) => {
+          const favButtonsInModal = document.querySelectorAll('#player-modal-favorite-btn, .context-menu-item[data-action="toggle_favorite"]');
           const icon = isFav ? ICONS.heartFill : ICONS.heart;
-          favoriteBtnDesktop.innerHTML = icon;
-          favoriteBtnDesktop.classList.toggle('active', isFav);
+          favButtonsInModal.forEach(btn => {
+            btn.innerHTML = icon + (btn.tagName === 'LI' ? ' Remove from Favorites' : '');
+            btn.classList.toggle('active', isFav);
+          });
+          const contextMenuItem = contextMenu.querySelector('.context-menu-item[data-action="toggle_favorite"]');
+          if (contextMenuItem) {
+            contextMenuItem.innerHTML = `${icon} ${isFav ? 'Remove from Favorites' : 'Add to Favorites'}`;
+          }
         };
         
         const toggleFavorite = async (songId) => {
@@ -2573,10 +3013,14 @@ function scan_music_directory($db) {
           });
           if (result) {
             if (currentSong && currentSong.id === songId) {
-              currentSong.is_favorite = result.is_favorite;
+              currentSong.is_favorite = result.is_favorite ? 1 : 0;
               updateFavoriteIcons(result.is_favorite);
             }
-            if (currentView.type === 'favorites') {
+            const songItemInView = document.querySelector(`.song-item[data-song-id="${songId}"]`);
+            if (songItemInView) {
+              songItemInView.dataset.isFavorite = result.is_favorite ? "1" : "0";
+            }
+            if (currentView.type === 'get_favorites' && !result.is_favorite) {
               setTimeout(() => loadView(currentView), 100);
             }
             showToast(result.status === 'added' ? 'Added to favorites' : 'Removed from favorites', 'success');
@@ -2600,10 +3044,10 @@ function scan_music_directory($db) {
         };
         
         const handleShare = async (type, id, name) => {
-          const url = `${window.location.origin}${window.location.pathname}?share_type=${type}&id=${encodeURIComponent(id)}`;
+          const url = `${window.location.origin}${window.location.pathname}?share_type=${type}&id=${id}`;
           const shareData = {
-            title: `PHP Music: ${name}`,
-            text: `Check out ${name} on PHP Music Player!`,
+            title: `PHP Music: ${decodeURIComponent(name)}`,
+            text: `Check out ${decodeURIComponent(name)} on PHP Music Player!`,
             url: url,
           };
 
@@ -2623,41 +3067,75 @@ function scan_music_directory($db) {
           }
         };
 
-        const showContextMenu = async (e, buttonEl) => {
-          e.preventDefault(); e.stopPropagation();
-          const songId = parseInt(buttonEl.dataset.songId);
-          const songTitle = buttonEl.dataset.songTitle;
-          const songUserId = parseInt(buttonEl.dataset.userId);
-          const { artist, album } = buttonEl.dataset;
+        const buildAndShowContextMenu = (buttonEl, songData) => {
+          if (!songData) return;
+
+          const { id: songId, title, artist, album, user_id: songUserId, is_favorite } = songData;
           
           let menuItems = `
-            <li class="context-menu-item" data-action="share_song" data-id="${songId}" data-name="${songTitle}"><i class="bi bi-share-fill"></i> Share Song</li>
-            <li class="context-menu-item" data-action="go_artist" data-name="${artist}"><i class="bi bi-person-fill"></i> Go to Artist</li>
-            <li class="context-menu-item" data-action="go_album" data-name="${album}"><i class="bi bi-disc-fill"></i> Go to Album</li>
-            <li class="context-menu-item" data-action="show_all_genres"><i class="bi bi-tags-fill"></i> View Genres</li>`;
+            <li class="context-menu-item" data-action="share_song" data-id="${songId}" data-name="${encodeURIComponent(title)}"><i class="bi bi-share-fill"></i> Share Song</li>
+            <li class="context-menu-item" data-action="go_artist" data-name="${encodeURIComponent(artist)}"><i class="bi bi-person-fill"></i> Go to Artist</li>
+            <li class="context-menu-item" data-action="go_album" data-name="${encodeURIComponent(album)}"><i class="bi bi-disc-fill"></i> Go to Album</li>
+            <li class="context-menu-item" data-action="show_all_genres"><i class="bi bi-tags-fill"></i> View All Genres</li>`;
           
           if (currentUser) {
-            const songData = await fetchData(`?action=get_song_data&id=${songId}`);
-            if (songData) {
-              const favText = songData.is_favorite ? "Remove from Favorites" : "Add to Favorites";
-              const favIcon = songData.is_favorite ? ICONS.heartFill : ICONS.heart;
-              menuItems += `<li class="context-menu-item" data-action="toggle_favorite" data-id="${songId}">${favIcon} ${favText}</li>`;
-              menuItems += `<li class="context-menu-item" data-action="download_song" data-id="${songId}"><i class="bi bi-download"></i> Download Song</li>`;
-              if (currentUser.id === songUserId || currentUser.artist === 'Music Library') {
-                menuItems += `<li class="context-menu-item" data-action="edit_genre" data-id="${songId}"><i class="bi bi-tag-fill"></i> Edit Genre</li>`;
-                menuItems += `<li class="context-menu-item text-danger" data-action="delete_song" data-id="${songId}"><i class="bi bi-trash-fill"></i> Delete Song</li>`;
-              }
+            const favText = is_favorite == 1 ? "Remove from Favorites" : "Add to Favorites";
+            const favIcon = is_favorite == 1 ? ICONS.heartFill : ICONS.heart;
+            menuItems += `<hr class="dropdown-divider bg-secondary mx-2 my-1">`;
+            menuItems += `<li class="context-menu-item" data-action="toggle_favorite" data-id="${songId}">${favIcon} ${favText}</li>`;
+            menuItems += `<li class="context-menu-item" data-action="add_to_playlist" data-id="${songId}"><i class="bi bi-plus-lg"></i> Add to Playlist</li>`;
+            menuItems += `<li class="context-menu-item" data-action="download_song" data-id="${songId}"><i class="bi bi-download"></i> Download Song</li>`;
+            if (currentView.type === 'playlist_songs') {
+                menuItems += `<li class="context-menu-item text-danger" data-action="remove_from_playlist" data-id="${songId}"><i class="bi bi-x-circle-fill"></i> Remove from Playlist</li>`;
+            }
+            if (currentUser.id === songUserId || currentUser.artist === 'Music Library') {
+              menuItems += `<hr class="dropdown-divider bg-secondary mx-2 my-1">`;
+              menuItems += `<li class="context-menu-item" data-action="edit_genre" data-id="${songId}"><i class="bi bi-pencil-fill"></i> Edit Genre</li>`;
+              menuItems += `<li class="context-menu-item text-danger" data-action="delete_song" data-id="${songId}"><i class="bi bi-trash-fill"></i> Delete Song</li>`;
             }
           }
           contextMenu.innerHTML = menuItems;
           contextMenu.style.display = 'block';
-          const rect = buttonEl.getBoundingClientRect();
+
+          const buttonRect = buttonEl.getBoundingClientRect();
           const menuWidth = contextMenu.offsetWidth;
           const menuHeight = contextMenu.offsetHeight;
-          let x = rect.left; let y = rect.bottom + 5;
-          if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 5;
-          if (y + menuHeight > window.innerHeight) y = rect.top - menuHeight - 5;
-          contextMenu.style.left = `${x}px`; contextMenu.style.top = `${y}px`;
+          
+          let x = buttonRect.right - menuWidth; 
+          let y = buttonRect.bottom + 5; 
+
+          if (window.innerWidth - buttonRect.right < 0) {
+              x = window.innerWidth - menuWidth - 5;
+          }
+          
+          if ((window.innerHeight - buttonRect.bottom) < menuHeight && buttonRect.top > menuHeight) {
+            y = buttonRect.top - menuHeight - 5;
+          }
+
+          contextMenu.style.left = `${x}px`;
+          contextMenu.style.top = `${y}px`;
+        };
+
+        const showPlayerContextMenu = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          buildAndShowContextMenu(e.currentTarget, currentSong);
+        };
+        
+        const showSongItemContextMenu = (buttonEl) => {
+          const songItem = buttonEl.closest('.song-item');
+          if (!songItem) return;
+
+          const songData = {
+            id: parseInt(songItem.dataset.songId),
+            is_favorite: songItem.dataset.isFavorite === '1',
+            title: songItem.dataset.songTitle,
+            artist: songItem.dataset.songArtist,
+            album: songItem.dataset.songAlbum,
+            user_id: parseInt(songItem.dataset.songUserId)
+          };
+          
+          buildAndShowContextMenu(buttonEl, songData);
         };
         
         const togglePlayPause = () => {
@@ -2749,8 +3227,8 @@ function scan_music_directory($db) {
             
             const viewType = navLink.dataset.view;
             let sort = 'artist_asc';
-            if (viewType === 'favorites') sort = 'manual_order';
-            if (viewType === 'profile_songs') sort = 'title_asc';
+            if (viewType === 'get_favorites' || viewType === 'get_user_playlists') sort = 'manual_order';
+            if (viewType === 'get_profile_songs') sort = 'title_asc';
 
             loadView({ type: viewType, param: '', sort: sort });
             const offcanvasEl = document.getElementById('main-nav-offcanvas');
@@ -2790,7 +3268,7 @@ function scan_music_directory($db) {
               scanProgressBar.classList.add('d-none');
               scanStatusText.textContent = data.message;
               showToast(data.message, data.status === 'error' ? 'error' : 'success');
-              if (currentView.type === 'songs') {
+              if (currentView.type === 'get_songs') {
                 loadView(currentView);
               }
             } else if (data) {
@@ -2799,31 +3277,45 @@ function scan_music_directory($db) {
           }, 2000);
         });
         
-        [playPauseBtnDesktop, playPauseBtnMobile].forEach(btn => btn.addEventListener('click', togglePlayPause));
-        [prevBtnDesktop, prevBtnMobile].forEach(btn => btn.addEventListener('click', playPrev));
-        [nextBtnDesktop, nextBtnMobile].forEach(btn => btn.addEventListener('click', playNext));
-        [shuffleBtnDesktop, shuffleBtnMobile].forEach(btn => btn.addEventListener('click', toggleShuffle));
-        [repeatBtnDesktop, repeatBtnMobile].forEach(btn => btn.addEventListener('click', () => {
+        playerElements.playPauseBtn.forEach(btn => btn.addEventListener('click', togglePlayPause));
+        playerElements.prevBtn.forEach(btn => btn.addEventListener('click', playPrev));
+        playerElements.nextBtn.forEach(btn => btn.addEventListener('click', playNext));
+        playerElements.shuffleBtn.forEach(btn => btn.addEventListener('click', toggleShuffle));
+        playerElements.repeatBtn.forEach(btn => btn.addEventListener('click', () => {
           repeatMode = (repeatMode === 'none') ? 'all' : (repeatMode === 'all') ? 'one' : 'none';
           updateRepeatIcons();
         }));
-        favoriteBtnDesktop.addEventListener('click', () => {
-          if (currentSong) toggleFavorite(currentSong.id);
-        });
+        
+        playerElements.moreBtn.forEach(btn => btn.addEventListener('click', showPlayerContextMenu));
 
+        if (playerTrackInfoMobile) {
+          playerTrackInfoMobile.addEventListener('click', e => {
+            if (!e.target.closest('button') && playerModal) {
+              playerModal.show();
+            }
+          });
+        }
+        
         contentArea.addEventListener('click', e => {
           const target = e.target;
           const moreBtn = target.closest('.more-btn');
           if (moreBtn) {
-            showContextMenu(e, moreBtn);
+            e.preventDefault();
+            e.stopPropagation();
+            showSongItemContextMenu(moreBtn);
             return;
           }
           const shareBtn = target.closest('.share-view-btn');
           if (shareBtn) {
             e.stopPropagation();
             const type = currentView.type.split('_')[0];
-            const name = decodeURIComponent(currentView.param);
-            handleShare(type, name, name);
+            const { shareId, shareName } = shareBtn.dataset;
+            handleShare(type, shareId, shareName);
+            return;
+          }
+          const createPlaylistBtn = target.closest('#create-new-playlist-btn');
+          if (createPlaylistBtn) {
+            createPlaylistModal.show();
             return;
           }
           const songArtistEl = target.closest('.song-artist');
@@ -2853,6 +3345,10 @@ function scan_music_directory($db) {
                viewType = 'genre_songs';
                param = cardEl.dataset.genre;
                sort = 'artist_asc';
+             } else if (cardEl.dataset.playlist) {
+               viewType = 'playlist_songs';
+               param = cardEl.dataset.playlist;
+               sort = 'manual_order';
              }
              if (viewType) {
                loadView({ type: viewType, param: param, sort: sort });
@@ -2870,6 +3366,17 @@ function scan_music_directory($db) {
           if (!contextMenu.contains(e.target)) contextMenu.style.display = 'none';
         });
 
+        const closeOpenModals = () => {
+          const playerModalInstance = bootstrap.Modal.getInstance(playerModalEl);
+          if (playerModalInstance && playerModalInstance._isShown) {
+            playerModalInstance.hide();
+          }
+          const genresModalInstance = bootstrap.Modal.getInstance(genresModalEl);
+          if (genresModalInstance && genresModalInstance._isShown) {
+            genresModalInstance.hide();
+          }
+        };
+
         contextMenu.addEventListener('click', async e => {
           const item = e.target.closest('.context-menu-item');
           if (!item) return;
@@ -2878,13 +3385,15 @@ function scan_music_directory($db) {
 
           switch (action) {
             case 'share_song':
-              handleShare('song', id, decodeURIComponent(name));
+              handleShare('song', id, name);
               break;
             case 'go_artist':
-              loadView({ type: 'artist_songs', param: name, sort: 'album_asc' });
-              break;
             case 'go_album':
-              loadView({ type: 'album_songs', param: name, sort: 'title_asc' });
+              closeOpenModals();
+              let view, sort;
+              if (action === 'go_artist') { view = 'artist_songs'; sort = 'album_asc'; }
+              if (action === 'go_album') { view = 'album_songs'; sort = 'title_asc'; }
+              loadView({ type: view, param: name, sort: sort });
               break;
             case 'show_all_genres':
               showAllGenresModal();
@@ -2892,6 +3401,31 @@ function scan_music_directory($db) {
             case 'toggle_favorite':
               toggleFavorite(parseInt(id));
               break;
+            case 'add_to_playlist':
+              songIdForPlaylist = parseInt(id);
+              const playlists = await fetchData('?action=get_user_playlists');
+              if (playlists && playlists.length > 0) {
+                  addToPlaylistModalBody.innerHTML = playlists.map(p => 
+                      `<li class="list-group-item list-group-item-action bg-transparent text-white add-to-playlist-item" data-playlist-id="${p.id}">${p.name}</li>`
+                  ).join('');
+              } else {
+                  addToPlaylistModalBody.innerHTML = `<p class="text-secondary text-center">No playlists found. Create one first!</p>`;
+              }
+              addToPlaylistModal.show();
+              break;
+            case 'remove_from_playlist':
+                if (confirm('Are you sure you want to remove this song from the playlist?')) {
+                    const result = await fetchData('?action=remove_from_playlist', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ song_id: parseInt(id), playlist_public_id: decodeURIComponent(currentView.param) })
+                    });
+                    if (result && result.status === 'success') {
+                        showToast(result.message, 'success');
+                        loadView(currentView);
+                    }
+                }
+                break;
             case 'edit_genre':
               const songIdToEdit = parseInt(id);
               const songData = await fetchData(`?action=get_song_data&id=${songIdToEdit}`);
@@ -2934,41 +3468,65 @@ function scan_music_directory($db) {
             if (!target) return;
             
             const genreName = target.dataset.genre;
-            genresModal.hide();
+            closeOpenModals();
             
             setTimeout(() => {
               loadView({ type: 'genre_songs', param: genreName, sort: 'artist_asc' });
               allNavLinks.forEach(l => l.classList.remove('active'));
-              const genreNavLink = document.querySelector('.nav-link[data-view="genres"]');
+              const genreNavLink = document.querySelector('.nav-link[data-view="get_genres"]');
               if(genreNavLink) genreNavLink.classList.add('active');
             }, 200);
+          });
+        }
+        
+        if (addToPlaylistModalBody) {
+          addToPlaylistModalBody.addEventListener('click', async e => {
+            const item = e.target.closest('.add-to-playlist-item');
+            if (!item || !songIdForPlaylist) return;
+            const playlistId = item.dataset.playlistId;
+            const result = await fetchData('?action=add_to_playlist', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ playlist_id: playlistId, song_id: songIdForPlaylist })
+            });
+            if (result) {
+                showToast(result.message, result.status === 'success' ? 'success' : 'info');
+                addToPlaylistModal.hide();
+                if (currentView.type === 'get_user_playlists') {
+                    loadView(currentView);
+                }
+                songIdForPlaylist = null;
+            }
           });
         }
 
         audio.addEventListener('timeupdate', () => {
           const { currentTime, duration } = audio;
           if (!isFinite(duration)) return;
+          const progressPercent = (currentTime / duration) * 100;
+          playerElements.progress.forEach(el => el.style.width = `${progressPercent}%`);
           const timeLeft = duration - currentTime;
-          progressBar.style.width = `${(currentTime / duration) * 100}%`;
-          currentTimeEl.textContent = formatTime(currentTime);
-          timeLeftEl.textContent = '-' + formatTime(timeLeft);
+          playerElements.currentTime.forEach(el => el.textContent = formatTime(currentTime));
+          playerElements.timeLeft.forEach(el => el.textContent = '-' + formatTime(timeLeft));
         });
 
         audio.addEventListener('loadedmetadata', () => {
           const { duration } = audio;
           if (!isFinite(duration)) return;
-          timeLeftEl.textContent = '-' + formatTime(duration);
+          playerElements.timeLeft.forEach(el => el.textContent = '-' + formatTime(duration));
         });
 
         audio.addEventListener('ended', () => (repeatMode === 'one') ? audio.play() : playNext());
-
-        progressContainer.addEventListener('click', e => {
-          if (!audio.duration || !isFinite(audio.duration)) return;
-          const bounds = progressContainer.getBoundingClientRect();
-          const percent = Math.max(0, Math.min(1, (e.clientX - bounds.left) / bounds.width));
-          audio.currentTime = percent * audio.duration;
-        });
         
+        playerElements.progressContainer.forEach(container => {
+            container.addEventListener('click', e => {
+              if (!audio.duration || !isFinite(audio.duration)) return;
+              const bounds = container.getBoundingClientRect();
+              const percent = Math.max(0, Math.min(1, (e.clientX - bounds.left) / bounds.width));
+              audio.currentTime = percent * audio.duration;
+            });
+        });
+
         mainContent.addEventListener('scroll', () => {
           if (mainContent.scrollTop + mainContent.clientHeight >= mainContent.scrollHeight - 300) {
             loadMoreContent();
@@ -3020,6 +3578,7 @@ function scan_music_directory($db) {
         const registerForm = document.getElementById('register-form');
         const changePwForm = document.getElementById('change-password-form');
         const logoutBtn = document.getElementById('logout-btn');
+        const createPlaylistForm = document.getElementById('create-playlist-form');
 
         loginForm.addEventListener('submit', async e => {
           e.preventDefault();
@@ -3052,13 +3611,30 @@ function scan_music_directory($db) {
             showToast(data.message, 'success');
           }
         });
+        
+        createPlaylistForm.addEventListener('submit', async e => {
+          e.preventDefault();
+          const name = document.getElementById('playlist-name-input').value;
+          const data = await fetchData('?action=create_playlist', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name })
+          });
+          if (data && data.status === 'success') {
+            createPlaylistModal.hide();
+            createPlaylistForm.reset();
+            showToast(data.message, 'success');
+            if (currentView.type === 'get_user_playlists') {
+              loadView(currentView);
+            }
+          }
+        });
 
         logoutBtn.addEventListener('click', async e => {
           e.preventDefault();
           await fetchData('?action=logout');
           currentUser = null;
           updateUIForAuthState();
-          loadView({ type: 'songs', param: '', sort: 'artist_asc' });
+          loadView({ type: 'get_songs', param: '', sort: 'artist_asc' });
         });
 
         changePwForm.addEventListener('submit', async e => {
@@ -3178,10 +3754,9 @@ function scan_music_directory($db) {
           if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('?pwa=sw').catch(err => console.error('SW registration failed:', err));
           }
-          [prevBtnDesktop, prevBtnMobile].forEach(b => b.innerHTML = ICONS.prev);
-          [nextBtnDesktop, nextBtnMobile].forEach(b => b.innerHTML = ICONS.next);
-          [shuffleBtnDesktop, shuffleBtnMobile].forEach(b => b.innerHTML = ICONS.shuffle);
-          favoriteBtnDesktop.innerHTML = ICONS.heart;
+          playerElements.prevBtn.forEach(b => b.innerHTML = ICONS.prev);
+          playerElements.nextBtn.forEach(b => b.innerHTML = ICONS.next);
+          playerElements.shuffleBtn.forEach(b => b.innerHTML = ICONS.shuffle);
           updatePlayPauseIcons();
           updateRepeatIcons();
           updateShuffleButtons();
@@ -3191,7 +3766,7 @@ function scan_music_directory($db) {
           if (window.initialView) {
             loadView(window.initialView);
           } else {
-            loadView({ type: 'songs', param: '', sort: 'artist_asc' });
+            loadView({ type: 'get_songs', param: '', sort: 'artist_asc' });
           }
         };
 
