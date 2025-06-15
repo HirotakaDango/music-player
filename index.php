@@ -2587,7 +2587,7 @@ function scan_music_directory($db) {
                 <h2 class="name text-truncate text-truncate-width">${details.name}</h2>
                 <div class="stats">${statsText}</div>
               </div>
-              <button class="btn btn-outline-light share-view-btn" title="Share ${type}" data-share-id="${details.public_id || encodeURIComponent(details.name)}" data-share-name="${encodeURIComponent(details.name)}">
+              <button class="btn btn-outline-light border-0 share-view-btn" title="Share ${type}" data-share-id="${details.public_id || encodeURIComponent(details.name)}" data-share-name="${encodeURIComponent(details.name)}">
                 <i class="bi bi-share-fill"></i> <span class="d-none d-md-inline">Share</span>
               </button>
             </div>`;
@@ -3035,7 +3035,7 @@ function scan_music_directory($db) {
           const allGenres = await fetchData('?action=get_all_genres');
           if (allGenres && allGenres.length > 0) {
             const genresHTML = allGenres.map(g => 
-              `<button type="button" class="btn btn-outline-light m-1 genre-modal-btn" data-genre="${encodeURIComponent(g)}">${g}</button>`
+              `<button type="button" class="btn btn-outline-light border-0 m-1 genre-modal-btn" data-genre="${encodeURIComponent(g)}">${g}</button>`
             ).join('');
             genresModalBody.innerHTML = `<div class="d-flex flex-wrap justify-content-center">${genresHTML}</div>`;
           } else {
@@ -3100,16 +3100,21 @@ function scan_music_directory($db) {
           const buttonRect = buttonEl.getBoundingClientRect();
           const menuWidth = contextMenu.offsetWidth;
           const menuHeight = contextMenu.offsetHeight;
+          const margin = 5;
           
-          let x = buttonRect.right - menuWidth; 
-          let y = buttonRect.bottom + 5; 
+          let x = buttonRect.right - menuWidth;
+          let y = buttonRect.bottom + margin;
 
-          if (window.innerWidth - buttonRect.right < 0) {
-              x = window.innerWidth - menuWidth - 5;
+          if (x < margin) {
+            x = margin;
           }
           
-          if ((window.innerHeight - buttonRect.bottom) < menuHeight && buttonRect.top > menuHeight) {
-            y = buttonRect.top - menuHeight - 5;
+          if (y + menuHeight > window.innerHeight) {
+            y = buttonRect.top - menuHeight - margin;
+          }
+          
+          if (y < margin) {
+             y = margin; 
           }
 
           contextMenu.style.left = `${x}px`;
