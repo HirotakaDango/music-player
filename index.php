@@ -2066,6 +2066,24 @@ function scan_music_directory($db) {
       .add-to-playlist-item:hover {
         background-color: var(--ytm-surface-2);
       }
+      .player-bar .extra-controls {
+          gap: 0.75rem; /* Adjust gap to better fit */
+      }
+      .volume-bar {
+          width: 120px;
+          display: flex;
+          align-items: center;
+      }
+      .volume-bar .progress-bar-container:hover .progress-bar-fg::after {
+          content: '';
+          position: absolute;
+          right: -8px;
+          top: -6px;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: var(--ytm-primary-text);
+      }
     </style>
   </head>
   <body class="logged-out">
@@ -2223,7 +2241,14 @@ function scan_music_directory($db) {
         </div>
       </div>
       <div class="extra-controls d-none d-md-flex">
-         <button class="player-btn" id="player-more-btn-desktop" title="More"><i class="bi bi-three-dots-vertical"></i></button>
+          <button class="player-btn" id="volume-icon-btn" title="Mute"><i class="bi bi-volume-up-fill"></i></button>
+          <div class="volume-bar">
+              <div class="progress-bar-container" id="volume-container">
+                  <div class="progress-bar-bg"></div>
+                  <div class="progress-bar-fg" id="volume-bar-fg"></div>
+              </div>
+          </div>
+          <button class="player-btn" id="player-more-btn-desktop" title="More"><i class="bi bi-three-dots-vertical"></i></button>
       </div>
     </div>
     <ul class="context-menu" id="context-menu"></ul>
@@ -2448,6 +2473,9 @@ function scan_music_directory($db) {
         const playerTrackInfoMobile = document.querySelector('.player-bar .track-info.d-md-none');
         const playerModalEl = document.getElementById('player-modal');
         const playerModal = playerModalEl ? new bootstrap.Modal(playerModalEl) : null;
+        const volumeContainer = document.getElementById('volume-container');
+        const volumeBarFg = document.getElementById('volume-bar-fg');
+        const volumeIconBtn = document.getElementById('volume-icon-btn');
 
         const playerElements = {
           art: [document.getElementById('player-art-desktop'), document.getElementById('player-art-mobile'), document.getElementById('player-modal-art')],
@@ -2466,6 +2494,8 @@ function scan_music_directory($db) {
         };
         
         const audio = new Audio();
+        audio.volume = 0.8; // Set default volume: 1 = 100% | 0.8 = 80%
+        audio.muted = false;
         let currentView = { type: 'get_songs', param: '', sort: 'artist_asc' };
         let currentUser = null;
         let currentSong = null;
@@ -3169,6 +3199,40 @@ function scan_music_directory($db) {
           isPlaying ? audio.play() : audio.pause();
           updatePlayPauseIcons();
         };
+
+        const updateVolumeUI = () => {
+          if (!audio) return;
+          const level = audio.muted ? 0 : audio.volume;
+          volumeBarFg.style.width = `${level * 100}%`;
+
+          let iconClass = 'bi-volume-up-fill';
+          if (level === 0) {
+            iconClass = 'bi-volume-mute-fill';
+          } else if (level < 0.5) {
+            iconClass = 'bi-volume-down-fill';
+          }
+          volumeIconBtn.innerHTML = `<i class="bi ${iconClass}"></i>`;
+        };
+
+        const setVolume = (newVolume) => {
+          audio.muted = false;
+          audio.volume = Math.max(0, Math.min(1, newVolume));
+          updateVolumeUI();
+        };
+
+        const toggleMute = () => {
+          audio.muted = !audio.muted;
+          updateVolumeUI();
+        };
+
+        volumeContainer.addEventListener('click', e => {
+            const rect = volumeContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const newVolume = x / rect.width;
+            setVolume(newVolume);
+        });
+
+        volumeIconBtn.addEventListener('click', toggleMute);
 
         const playNext = () => {
           if (queue.length === 0) return;
