@@ -43,7 +43,7 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 
 If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 
-### For XAMPP (Windows/macOS/Linux)
+### For XAMPP (Windows/macOS)
 
 1. Open your `php.ini` file (usually found in `xampp/php/php.ini`).
 2. Ensure these lines are **not** commented (remove the leading semicolon `;` if present):
