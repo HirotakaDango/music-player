@@ -1,6 +1,6 @@
 # PHP Music Player
 
-A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, manage your library, favorites, and playlists—all from a beautiful single page app!
+A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, and manage your library with user accounts and uploads.
 
 ![f14d2db43f7d_i0](https://github.com/user-attachments/assets/c982c7a3-b12d-4e86-b8a1-f3820c08e02f)
 ![f14d2db43f7d_i1](https://github.com/user-attachments/assets/8e65a4a2-aa3f-47a2-9d73-bb91a431f9af)
@@ -26,6 +26,8 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 - 🏢 **Admin Panel**: Admin can verify/un-verify user accounts, view user stats, and manage verification for uploads.
 - 🎶 **Playlists**: Create, manage, and reorder custom playlists for your favorite tracks.
 - 🔄 **Drag-and-drop Ordering**: Reorder favorites and playlist songs by dragging.
+- 🔗 **Shareable Views**: Share direct links to songs, albums, artists, and playlists with others.
+- 🗂️ **Infinite Scroll and Pagination**: Large libraries load smoothly with infinite scroll support.
 
 ## Demo
 
@@ -139,7 +141,10 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - **Edit Genre**: Right-click (or tap "..." on mobile) a song and choose "Edit Genre".
 - **Upload Music**: Click "Upload Song". You can upload multiple files at once; genre is auto-detected but can be overridden. **Upload limit:** 5 songs per user per day.
 - **Delete/Download**: Use context menu on your uploads to delete or download.
+- **Share**: Click the "Share" button on albums, artists, playlists, or songs to get a shareable link.
 - **PWA**: Click "Install App" (sidebar) if your browser supports PWAs. Works offline for playback and browsing.
+- **Infinite Scroll**: Large libraries auto-load more songs as you scroll.
+- **Context Menus**: Right-click or tap "..." for per-song actions like share, add to playlist, edit genre, delete, etc.
 
 ### Admin Panel
 
@@ -159,6 +164,7 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - Uploads are stored in `/uploads/{artist}/` and are only accessible to the uploader or admin.
 - Only the uploading user (or admin) can edit genre, delete, or download their uploads.
 - Playlists and favorites support drag-and-drop ordering.
+- Shareable views use query parameters for albums, artists, playlists, or specific songs.
 
 ## Customization
 
