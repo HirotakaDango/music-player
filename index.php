@@ -27,13 +27,15 @@ if (isset($_GET['pwa'])) {
   if ($_GET['pwa'] == 'sw') {
     header('Content-Type: application/javascript; charset=utf-8');
     echo <<<SW
-    const CACHE_NAME = 'php-music-cache-v12';
+    const CACHE_NAME = 'php-music-cache-v14';
     const STATIC_ASSETS = [
       './',
       'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
       'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css',
       'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js',
-      'https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js'
+      'https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js',
+      'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap',
+      'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/fonts/bootstrap-icons.woff2?v=1.11.3'
     ];
 
     self.addEventListener('install', event => {
@@ -89,6 +91,7 @@ set_time_limit(0);
 define('MUSIC_DIR', __DIR__);
 define('DB_FILE', __DIR__ . '/music.db');
 define('PAGE_SIZE', 25);
+define('ADMIN_PAGE_SIZE', 20);
 define('ADMIN_PASSWORD', 'admin');
 define('ADMIN_PASSWORD_HASH', password_hash(ADMIN_PASSWORD, PASSWORD_DEFAULT));
 define('DAILY_UPLOAD_LIMIT', 5);
@@ -117,7 +120,7 @@ if (isset($_GET['access']) && $_GET['access'] === 'admin') {
         $update_stmt = $db->prepare("UPDATE users SET verified = ? WHERE id = ?");
         $update_stmt->execute([$new_status, $user_id]);
       }
-      header('Location: ?access=admin');
+      header('Location: ' . $_SERVER['REQUEST_URI']);
       exit;
     }
   }
@@ -196,6 +199,20 @@ if (isset($_GET['access']) && $_GET['access'] === 'admin') {
         background-color: var(--ytm-surface-2); border: 1px solid #404040; color: var(--ytm-primary-text);
       }
       .form-control:focus { background-color: var(--ytm-surface-2); border-color: #666; color: var(--ytm-primary-text); box-shadow: none; }
+      .pagination .page-link {
+        background-color: var(--ytm-surface-2);
+        border-color: #404040;
+        color: var(--ytm-primary-text);
+      }
+      .pagination .page-item.active .page-link {
+        background-color: var(--ytm-accent);
+        border-color: var(--ytm-accent);
+      }
+      .pagination .page-item.disabled .page-link {
+        background-color: var(--ytm-surface);
+        border-color: #404040;
+        color: var(--ytm-secondary-text);
+      }
       @media (max-width: 991.98px) {
         .app-container { flex-direction: column; height: auto; }
         .sidebar {
@@ -273,8 +290,19 @@ if (isset($_GET['access']) && $_GET['access'] === 'admin') {
             </div>
             <?php
               $db = get_db();
-              $stmt = $db->query("SELECT id, email, artist, verified, last_upload_date, daily_upload_count FROM users ORDER BY id ASC");
+              $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+              $offset = ($page - 1) * ADMIN_PAGE_SIZE;
+
+              $total_users_stmt = $db->query("SELECT COUNT(id) FROM users");
+              $total_users = $total_users_stmt->fetchColumn();
+              $total_pages = ceil($total_users / ADMIN_PAGE_SIZE);
+
+              $stmt = $db->prepare("SELECT id, email, artist, verified, last_upload_date, daily_upload_count FROM users ORDER BY id ASC LIMIT ? OFFSET ?");
+              $stmt->bindValue(1, ADMIN_PAGE_SIZE, PDO::PARAM_INT);
+              $stmt->bindValue(2, $offset, PDO::PARAM_INT);
+              $stmt->execute();
               $users = $stmt->fetchAll();
+
               foreach ($users as $user):
             ?>
             <div class="user-item">
@@ -294,7 +322,7 @@ if (isset($_GET['access']) && $_GET['access'] === 'admin') {
                 <div class="user-artist text-truncate"><?php echo htmlspecialchars($user['artist']); ?></div>
               </div>
               <div class="user-item-action">
-                <form method="POST" action="?access=admin" class="d-inline">
+                <form method="POST" action="?access=admin&page=<?php echo $page; ?>" class="d-inline">
                   <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
                   <button type="submit" name="toggle_verify" class="btn <?php echo $user['verified'] === 'yes' ? 'btn-warning' : 'btn-success'; ?>">
                     <?php echo $user['verified'] === 'yes' ? 'Un-verify' : 'Verify'; ?>
@@ -318,6 +346,23 @@ if (isset($_GET['access']) && $_GET['access'] === 'admin') {
             </div>
             <?php endforeach; ?>
           </div>
+          <?php if ($total_pages > 1): ?>
+          <nav class="mt-4" aria-label="User pagination">
+            <ul class="pagination justify-content-center">
+              <li class="page-item <?php echo ($page <= 1) ? 'disabled' : ''; ?>">
+                <a class="page-link" href="?access=admin&page=<?php echo $page - 1; ?>">Previous</a>
+              </li>
+              <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+              <li class="page-item <?php echo ($page == $i) ? 'active' : ''; ?>">
+                <a class="page-link" href="?access=admin&page=<?php echo $i; ?>"><?php echo $i; ?></a>
+              </li>
+              <?php endfor; ?>
+              <li class="page-item <?php echo ($page >= $total_pages) ? 'disabled' : ''; ?>">
+                <a class="page-link" href="?access=admin&page=<?php echo $page + 1; ?>">Next</a>
+              </li>
+            </ul>
+          </nav>
+          <?php endif; ?>
         </div>
       </main>
     </div>
@@ -737,7 +782,6 @@ if (isset($_GET['action'])) {
       break;
 
     case 'download_song':
-      if (!$user_id) { http_response_code(403); exit; }
       $song_id = intval($_GET['id'] ?? 0);
       $stmt = $db->prepare("SELECT file FROM music WHERE id = ?");
       $stmt->execute([$song_id]);
@@ -1081,7 +1125,7 @@ if (isset($_GET['action'])) {
 
     case 'get_song_data':
       $id = intval($_GET['id'] ?? 0);
-      $stmt = $db->prepare("SELECT m.id, m.file, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? WHERE m.id = ?");
+      $stmt = $db->prepare("SELECT m.id, m.file, m.title, m.artist, m.album, m.genre, m.year, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? WHERE m.id = ?");
       $stmt->execute([$user_id, $id]);
       $song = $stmt->fetch();
       if ($song) {
@@ -1817,6 +1861,69 @@ function scan_music_directory($db) {
         align-items: center;
         gap: 1rem;
       }
+      .volume-control {
+        width: 150px;
+        display: flex;
+        align-items: center;
+      }
+      .volume-slider-container {
+        flex-grow: 1;
+        padding: 5px 0.5rem;
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      #volume-slider.form-range {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        cursor: pointer;
+        outline: none;
+        padding: 0;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--ytm-surface-2);
+      }
+      #volume-slider.form-range::-webkit-slider-runnable-track {
+        -webkit-appearance: none;
+        background: none;
+        border: none;
+        height: 4px;
+      }
+      #volume-slider.form-range::-moz-range-track {
+        background: none;
+        border: none;
+        height: 4px;
+      }
+      #volume-slider.form-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 12px;
+        width: 12px;
+        background-color: var(--ytm-primary-text);
+        border-radius: 50%;
+        margin-top: -4px;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+      }
+      #volume-slider.form-range::-moz-range-thumb {
+        height: 12px;
+        width: 12px;
+        background-color: var(--ytm-primary-text);
+        border-radius: 50%;
+        border: none;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+      }
+      .volume-control:hover #volume-slider.form-range::-webkit-slider-thumb {
+        opacity: 1;
+      }
+      .volume-control:hover #volume-slider.form-range::-moz-range-thumb {
+        opacity: 1;
+      }
+      .volume-control:hover #volume-slider.form-range {
+        --track-fill: var(--ytm-accent) !important;
+      }
       .modal-content {
         background-color: var(--ytm-surface);
         border: none;
@@ -2223,7 +2330,15 @@ function scan_music_directory($db) {
         </div>
       </div>
       <div class="extra-controls d-none d-md-flex">
-         <button class="player-btn" id="player-more-btn-desktop" title="More"><i class="bi bi-three-dots-vertical"></i></button>
+        <div class="volume-control d-flex align-items-center">
+          <button class="player-btn" id="volume-btn" title="Mute">
+            <i class="bi bi-volume-up-fill"></i>
+          </button>
+          <div class="volume-slider-container">
+            <input type="range" class="form-range" id="volume-slider" min="0" max="1" step="0.01" value="1">
+          </div>
+        </div>
+        <button class="player-btn" id="player-more-btn-desktop" title="More"><i class="bi bi-three-dots-vertical"></i></button>
       </div>
     </div>
     <ul class="context-menu" id="context-menu"></ul>
@@ -2411,7 +2526,18 @@ function scan_music_directory($db) {
         </div>
       </div>
     </div>
-
+    <div class="modal fade" id="metadata-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header border-0">
+            <h5 class="modal-title">Song Metadata</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="metadata-modal-body">
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -2444,6 +2570,9 @@ function scan_music_directory($db) {
         const addToPlaylistModalEl = document.getElementById('add-to-playlist-modal');
         const addToPlaylistModal = addToPlaylistModalEl ? new bootstrap.Modal(addToPlaylistModalEl) : null;
         const addToPlaylistModalBody = document.getElementById('add-to-playlist-modal-body');
+        const metadataModalEl = document.getElementById('metadata-modal');
+        const metadataModal = metadataModalEl ? new bootstrap.Modal(metadataModalEl) : null;
+        const metadataModalBody = document.getElementById('metadata-modal-body');
 
         const playerTrackInfoMobile = document.querySelector('.player-bar .track-info.d-md-none');
         const playerModalEl = document.getElementById('player-modal');
@@ -2462,7 +2591,9 @@ function scan_music_directory($db) {
           nextBtn: [document.getElementById('next-btn-desktop'), document.getElementById('next-btn-mobile'), document.getElementById('player-modal-next-btn')],
           shuffleBtn: [document.getElementById('shuffle-btn-desktop'), document.getElementById('shuffle-btn-mobile'), document.getElementById('player-modal-shuffle-btn')],
           repeatBtn: [document.getElementById('repeat-btn-desktop'), document.getElementById('repeat-btn-mobile'), document.getElementById('player-modal-repeat-btn')],
-          moreBtn: [document.getElementById('player-more-btn-desktop'), document.getElementById('player-more-btn-mobile'), document.getElementById('player-modal-more-btn')]
+          moreBtn: [document.getElementById('player-more-btn-desktop'), document.getElementById('player-more-btn-mobile'), document.getElementById('player-modal-more-btn')],
+          volumeBtn: document.getElementById('volume-btn'),
+          volumeSlider: document.getElementById('volume-slider'),
         };
         
         const audio = new Audio();
@@ -2479,6 +2610,7 @@ function scan_music_directory($db) {
         let deferredInstallPrompt = null;
         let sortable = null;
         let songIdForPlaylist = null;
+        let previousVolume = 1;
         
         const PAGE_SIZE = 25;
         let currentPage = 1;
@@ -2494,7 +2626,10 @@ function scan_music_directory($db) {
           prev: `<i class="bi bi-skip-start-fill"></i>`,
           next: `<i class="bi bi-skip-end-fill"></i>`,
           heart: `<i class="bi bi-heart"></i>`,
-          heartFill: `<i class="bi bi-heart-fill"></i>`
+          heartFill: `<i class="bi bi-heart-fill"></i>`,
+          volumeUp: `<i class="bi bi-volume-up-fill"></i>`,
+          volumeDown: `<i class="bi bi-volume-down-fill"></i>`,
+          volumeMute: `<i class="bi bi-volume-mute-fill"></i>`,
         };
 
         const formatTime = (seconds) => {
@@ -3004,7 +3139,26 @@ function scan_music_directory($db) {
             contextMenuItem.innerHTML = `${icon} ${isFav ? 'Remove from Favorites' : 'Add to Favorites'}`;
           }
         };
+
+        const updateVolumeSliderFill = () => {
+          if (!playerElements.volumeSlider) return;
+          const slider = playerElements.volumeSlider;
+          const value = (slider.value - slider.min) / (slider.max - slider.min);
+          const percent = value * 100;
+          slider.style.background = `linear-gradient(to right, var(--ytm-primary-text) ${percent}%, var(--ytm-surface-2) ${percent}%)`;
+        };
         
+        const updateVolumeIcon = () => {
+          if (!playerElements.volumeBtn) return;
+          if (audio.muted || audio.volume === 0) {
+            playerElements.volumeBtn.innerHTML = ICONS.volumeMute;
+          } else if (audio.volume < 0.5) {
+            playerElements.volumeBtn.innerHTML = ICONS.volumeDown;
+          } else {
+            playerElements.volumeBtn.innerHTML = ICONS.volumeUp;
+          }
+        };
+
         const toggleFavorite = async (songId) => {
           if (!currentUser) {
             showToast('Please log in to add favorites.', 'error');
@@ -3096,7 +3250,10 @@ function scan_music_directory($db) {
             <li class="context-menu-item" data-action="share_song" data-id="${songId}" data-name="${encodeURIComponent(title)}"><i class="bi bi-share-fill"></i> Share Song</li>
             <li class="context-menu-item" data-action="go_artist" data-name="${encodeURIComponent(artist)}"><i class="bi bi-person-fill"></i> Go to Artist</li>
             <li class="context-menu-item" data-action="go_album" data-name="${encodeURIComponent(album)}"><i class="bi bi-disc-fill"></i> Go to Album</li>
-            <li class="context-menu-item" data-action="show_all_genres"><i class="bi bi-tags-fill"></i> View All Genres</li>`;
+            <li class="context-menu-item" data-action="show_all_genres"><i class="bi bi-tags-fill"></i> View All Genres</li>
+            <li class="context-menu-item" data-action="download_song" data-id="${songId}"><i class="bi bi-download"></i> Download Song</li>
+            <li class="context-menu-item" data-action="show_metadata" data-id="${songId}"><i class="bi bi-file-earmark-music"></i> View Metadata</li>
+            `;
           
           if (currentUser) {
             const favText = is_favorite == 1 ? "Remove from Favorites" : "Add to Favorites";
@@ -3104,7 +3261,6 @@ function scan_music_directory($db) {
             menuItems += `<hr class="dropdown-divider bg-secondary mx-2 my-1">`;
             menuItems += `<li class="context-menu-item" data-action="toggle_favorite" data-id="${songId}">${favIcon} ${favText}</li>`;
             menuItems += `<li class="context-menu-item" data-action="add_to_playlist" data-id="${songId}"><i class="bi bi-plus-lg"></i> Add to Playlist</li>`;
-            menuItems += `<li class="context-menu-item" data-action="download_song" data-id="${songId}"><i class="bi bi-download"></i> Download Song</li>`;
             if (currentView.type === 'playlist_songs') {
                 menuItems += `<li class="context-menu-item text-danger" data-action="remove_from_playlist" data-id="${songId}"><i class="bi bi-x-circle-fill"></i> Remove from Playlist</li>`;
             }
@@ -3313,6 +3469,35 @@ function scan_music_directory($db) {
         
         playerElements.moreBtn.forEach(btn => btn.addEventListener('click', showPlayerContextMenu));
 
+        if (playerElements.volumeSlider) {
+          playerElements.volumeSlider.addEventListener('input', e => {
+            audio.volume = e.target.value;
+            audio.muted = false;
+            updateVolumeSliderFill();
+          });
+        }
+        if (playerElements.volumeBtn) {
+          playerElements.volumeBtn.addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            if (audio.muted) {
+              playerElements.volumeSlider.value = 0;
+            } else {
+              playerElements.volumeSlider.value = audio.volume > 0 ? audio.volume : previousVolume;
+              audio.volume = playerElements.volumeSlider.value;
+            }
+            updateVolumeSliderFill();
+            updateVolumeIcon();
+          });
+        }
+        audio.addEventListener('volumechange', () => {
+          if (!audio.muted) {
+            previousVolume = audio.volume;
+            playerElements.volumeSlider.value = audio.volume;
+          }
+          updateVolumeSliderFill();
+          updateVolumeIcon();
+        });
+
         if (playerTrackInfoMobile) {
           playerTrackInfoMobile.addEventListener('click', e => {
             if (!e.target.closest('button') && playerModal) {
@@ -3453,9 +3638,9 @@ function scan_music_directory($db) {
                 break;
             case 'edit_genre':
               const songIdToEdit = parseInt(id);
-              const songData = await fetchData(`?action=get_song_data&id=${songIdToEdit}`);
-              if (!songData) break;
-              const newGenre = prompt("Enter the new genre for this song:", songData.genre || "");
+              const songDataForEdit = await fetchData(`?action=get_song_data&id=${songIdToEdit}`);
+              if (!songDataForEdit) break;
+              const newGenre = prompt("Enter the new genre for this song:", songDataForEdit.genre || "");
               if (newGenre !== null && newGenre.trim() !== '') {
                   const result = await fetchData('?action=edit_genre', {
                       method: 'POST',
@@ -3466,6 +3651,22 @@ function scan_music_directory($db) {
                       showToast('Genre updated!', 'success');
                       loadView(currentView);
                   }
+              }
+              break;
+            case 'show_metadata':
+              const songIdForMeta = parseInt(id);
+              const metaSongData = await fetchData(`?action=get_song_data&id=${songIdForMeta}`);
+              if (metaSongData && metadataModalBody) {
+                  metadataModalBody.innerHTML = `
+                    <ul class="list-group list-group-flush">
+                      <li class="list-group-item bg-transparent border-secondary text-white d-flex justify-content-between"><strong>Title:</strong> <span>${metaSongData.title || 'N/A'}</span></li>
+                      <li class="list-group-item bg-transparent border-secondary text-white d-flex justify-content-between"><strong>Artist:</strong> <span>${metaSongData.artist || 'N/A'}</span></li>
+                      <li class="list-group-item bg-transparent border-secondary text-white d-flex justify-content-between"><strong>Album:</strong> <span>${metaSongData.album || 'N/A'}</span></li>
+                      <li class="list-group-item bg-transparent border-secondary text-white d-flex justify-content-between"><strong>Genre:</strong> <span>${metaSongData.genre || 'N/A'}</span></li>
+                      <li class="list-group-item bg-transparent border-secondary text-white d-flex justify-content-between"><strong>Year:</strong> <span>${metaSongData.year || 'N/A'}</span></li>
+                      <li class="list-group-item bg-transparent border-secondary text-white d-flex justify-content-between"><strong>Duration:</strong> <span>${formatTime(metaSongData.duration)}</span></li>
+                    </ul>`;
+                  metadataModal.show();
               }
               break;
             case 'download_song':
@@ -3785,6 +3986,11 @@ function scan_music_directory($db) {
           updatePlayPauseIcons();
           updateRepeatIcons();
           updateShuffleButtons();
+          updateVolumeIcon();
+          if (playerElements.volumeSlider) {
+            audio.volume = playerElements.volumeSlider.value;
+            updateVolumeSliderFill();
+          }
 
           await checkSession();
 
