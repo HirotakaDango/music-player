@@ -2,8 +2,8 @@
 
 A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, and manage your library—all in one place.
 
-![1](https://github.com/user-attachments/assets/0376f90c-12a9-45bf-acc4-ef14e0fe9ff3)
-![2](https://github.com/user-attachments/assets/c0b1a692-4504-4701-b921-d54fc7360b5c) 
+![1](https://raw.githubusercontent.com/HirotakaDango/php-music-wiki/refs/heads/main/1.png)
+![2](https://raw.githubusercontent.com/HirotakaDango/php-music-wiki/refs/heads/main/2.png) 
 
 ## Features
 
