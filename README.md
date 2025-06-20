@@ -1,4 +1,4 @@
-# PHP Music Player
+# PHP Music
 
 A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, and manage your library—all in one place.
 
