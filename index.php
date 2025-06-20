@@ -90,7 +90,7 @@ set_time_limit(0);
 
 define('MUSIC_DIR', __DIR__);
 define('DB_FILE', __DIR__ . '/music.db');
-define('APP_VERSION', '1.1');
+define('APP_VERSION', '1.2');
 define('PAGE_SIZE', 25);
 define('ADMIN_PAGE_SIZE', 20);
 define('ADMIN_PASSWORD', 'admin');
@@ -675,12 +675,15 @@ if (isset($_GET['action'])) {
       break;
 
     case 'scan':
-      if (!$user_id) { http_response_code(403); exit; }
       send_json(['status' => 'starting']);
       session_write_close();
       ob_flush(); flush();
       scan_music_directory($db);
       break;
+    
+    case 'emergency_scan':
+      perform_emergency_scan($db);
+      exit;
 
     case 'scan_status':
       send_json(['status' => $_SESSION['scan_status'] ?? 'idle', 'message' => $_SESSION['scan_message'] ?? '']);
@@ -1320,86 +1323,99 @@ if (isset($_GET['action'])) {
   exit;
 }
 
-function get_music_files_recursive($dir, &$results, $uploads_path) {
-  if (!is_readable($dir)) { return; }
-  
-  $items = scandir($dir);
-  foreach ($items as $item) {
-    if ($item === '.' || $item === '..') {
-      continue;
-    }
-    
-    $path = $dir . DIRECTORY_SEPARATOR . $item;
-    
-    if ($path === $uploads_path) {
-      continue;
-    }
-    
-    if (is_dir($path)) {
-      get_music_files_recursive($path, $results, $uploads_path);
-    } elseif (preg_match('/\.(mp3|m4a|flac|ogg|wav)$/i', $path)) {
-      $results[$path] = filemtime($path);
-    }
-  }
-}
-
 function scan_music_directory($db) {
   if (!class_exists('getID3')) {
-    $_SESSION['scan_status'] = 'error'; $_SESSION['scan_message'] = 'getID3 library not found.'; return;
+    session_start();
+    $_SESSION['scan_status'] = 'error';
+    $_SESSION['scan_message'] = 'getID3 library not found.';
+    session_write_close();
+    return;
   }
-  $_SESSION['scan_status'] = 'scanning'; $_SESSION['scan_message'] = 'Starting scan...'; session_write_close();
+  session_start();
+  $_SESSION['scan_status'] = 'scanning';
+  $_SESSION['scan_message'] = 'Starting scan...';
+  session_write_close();
 
   $stmt = $db->query("SELECT id FROM users WHERE email = 'musiclibrary@mail.com'");
   $library_user_id = $stmt->fetchColumn();
   if (!$library_user_id) {
     session_start();
-    $_SESSION['scan_status'] = 'error'; $_SESSION['scan_message'] = 'Music Library user not found.';
+    $_SESSION['scan_status'] = 'error';
+    $_SESSION['scan_message'] = 'Music Library user not found.';
     session_write_close();
     return;
   }
 
+  session_start();
+  $_SESSION['scan_message'] = "Fetching records from database...";
+  session_write_close();
   $stmt = $db->query("SELECT file, last_modified FROM music WHERE user_id = " . $library_user_id);
   $db_files = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
-  $disk_files = [];
+  session_start();
+  $_SESSION['scan_message'] = "Scanning music directory...";
+  session_write_close();
+  $files_on_disk = [];
   $uploads_path = realpath(MUSIC_DIR . '/uploads');
-  get_music_files_recursive(MUSIC_DIR, $disk_files, $uploads_path);
-
-  $files_to_delete = array_diff_key($db_files, $disk_files);
-  $files_to_add = array_diff_key($disk_files, $db_files);
-  $files_to_check_for_update = array_intersect_key($disk_files, $db_files);
-  
-  if (!empty($files_to_delete)) {
-    $db->beginTransaction();
-    $delete_stmt = $db->prepare("DELETE FROM music WHERE file = ?");
-    foreach (array_keys($files_to_delete) as $file_path) {
-      $delete_stmt->execute([$file_path]);
+  try {
+    $directory = new RecursiveDirectoryIterator(MUSIC_DIR, RecursiveDirectoryIterator::SKIP_DOTS);
+    $iterator = new RecursiveIteratorIterator($directory, RecursiveIteratorIterator::LEAVES_ONLY);
+    foreach ($iterator as $file) {
+      if ($file->isDir()) {
+        continue;
+      }
+      $filePath = $file->getRealPath();
+      if ($uploads_path && strpos($filePath, $uploads_path) === 0) {
+        continue;
+      }
+      if (preg_match('/\.(mp3|m4a|flac|ogg|wav)$/i', $filePath)) {
+        $files_on_disk[$filePath] = $file->getMTime();
+      }
     }
-    $db->commit();
+  } catch (Exception $e) {
+      session_start();
+      $_SESSION['scan_status'] = 'error';
+      $_SESSION['scan_message'] = 'Error scanning directory: ' . $e->getMessage();
+      session_write_close();
+      return;
   }
-  
-  $files_to_process = $files_to_add;
-  foreach ($files_to_check_for_update as $path => $mtime) {
+
+  $files_to_add = array_diff_key($files_on_disk, $db_files);
+  $files_to_delete = array_diff_key($db_files, $files_on_disk);
+  $files_to_update = [];
+  $potential_updates = array_intersect_key($files_on_disk, $db_files);
+  foreach ($potential_updates as $path => $mtime) {
     if ($mtime > $db_files[$path]) {
-      $files_to_process[$path] = $mtime;
+      $files_to_update[$path] = $mtime;
     }
   }
 
-  if (empty($files_to_process)) {
-    session_start(); $_SESSION['scan_status'] = 'finished'; $_SESSION['scan_message'] = 'Scan complete. No new or updated files found.'; session_write_close();
+  $files_to_process = $files_to_add + $files_to_update;
+  $total_to_process = count($files_to_process) + count($files_to_delete);
+
+  if ($total_to_process === 0) {
+    session_start();
+    $_SESSION['scan_status'] = 'finished';
+    $_SESSION['scan_message'] = 'Scan complete. No changes detected.';
+    session_write_close();
     return;
   }
-  
+
   $getID3 = new getID3;
   $insert_stmt = $db->prepare("INSERT INTO music (user_id, file, title, artist, album, genre, year, duration, image, last_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   $update_stmt = $db->prepare("UPDATE music SET title=?, artist=?, album=?, genre=?, year=?, duration=?, image=?, last_modified=? WHERE file=?");
-  
-  $total = count($files_to_process); $count = 0;
-  foreach ($files_to_process as $filePath => $mtime) {
-    session_start(); $_SESSION['scan_message'] = "Processing " . ($count + 1) . " of $total: " . basename($filePath); session_write_close();
-    $count++;
-    
-    try {
+  $delete_stmt = $db->prepare("DELETE FROM music WHERE file = ?");
+  $processed_count = 0;
+
+  try {
+    $db->beginTransaction();
+
+    foreach ($files_to_process as $filePath => $mtime) {
+      $processed_count++;
+      session_start();
+      $_SESSION['scan_message'] = "[$processed_count/$total_to_process] Processing: " . basename($filePath);
+      session_write_close();
+
       $info = $getID3->analyze($filePath);
       getid3_lib::CopyTagsToComments($info);
       $title = trim($info['comments']['title'][0] ?? pathinfo($filePath, PATHINFO_FILENAME));
@@ -1408,22 +1424,160 @@ function scan_music_directory($db) {
       $genre = trim($info['comments']['genre'][0] ?? 'Unknown Genre');
       $year = (int)($info['comments']['year'][0] ?? 0);
       $duration = (int)($info['playtime_seconds'] ?? 0);
-      $raw_image_data = isset($info['comments']['picture'][0]['data']) ? $info['comments']['picture'][0]['data'] : null;
+      $raw_image_data = $info['comments']['picture'][0]['data'] ?? null;
       $webp_image_data = process_image_to_webp($raw_image_data);
-      
-      $db->beginTransaction();
+
       if (isset($files_to_add[$filePath])) {
         $insert_stmt->execute([$library_user_id, $filePath, $title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime]);
       } else {
         $update_stmt->execute([$title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime, $filePath]);
       }
-      $db->commit();
-    } catch (Exception $e) {
-      if ($db->inTransaction()) { $db->rollBack(); }
+    }
+
+    foreach (array_keys($files_to_delete) as $filePath) {
+      $processed_count++;
+      session_start();
+      $_SESSION['scan_message'] = "[$processed_count/$total_to_process] Deleting: " . basename($filePath);
+      session_write_close();
+      $delete_stmt->execute([$filePath]);
+    }
+
+    $db->commit();
+  } catch (Exception $e) {
+    if ($db->inTransaction()) {
+      $db->rollBack();
+    }
+    session_start();
+    $_SESSION['scan_status'] = 'error';
+    $_SESSION['scan_message'] = 'Scan failed: ' . $e->getMessage();
+    session_write_close();
+    return;
+  }
+
+  session_start();
+  $_SESSION['scan_status'] = 'finished';
+  $_SESSION['scan_message'] = "Scan complete. Processed $processed_count files.";
+  session_write_close();
+}
+
+function perform_emergency_scan($db) {
+  ini_set('memory_limit', '512M');
+  error_reporting(E_ALL);
+  ini_set('display_errors', 1);
+
+  header('Content-Type: text/plain; charset=utf-8');
+  ob_implicit_flush();
+
+  echo "PHP Music Library Scanner\n";
+  echo "=========================\n\n";
+
+  if (!class_exists('getID3')) {
+    die("FATAL ERROR: getID3 library not found in " . __DIR__ . "/getid3/\n");
+  }
+
+  echo "Step 1: Database ready.\n\n";
+
+  echo "Step 2: Verifying 'Music Library' user...\n";
+  $stmt = $db->query("SELECT id FROM users WHERE email = 'musiclibrary@mail.com'");
+  $library_user_id = $stmt->fetchColumn();
+  if (!$library_user_id) {
+    die("FATAL ERROR: 'Music Library' user could not be found or created.\n");
+  }
+  echo "'Music Library' user ID: {$library_user_id}\n\n";
+
+  echo "Step 3: Fetching existing music records from database...\n";
+  $stmt = $db->query("SELECT file, last_modified FROM music WHERE user_id = " . $library_user_id);
+  $db_files = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+  echo "Found " . count($db_files) . " records in the database.\n\n";
+
+  echo "Step 4: Scanning music directory for files...\n";
+  $files_on_disk = [];
+  $uploads_path = realpath(MUSIC_DIR . '/uploads');
+  $directory = new RecursiveDirectoryIterator(MUSIC_DIR, RecursiveDirectoryIterator::SKIP_DOTS);
+  $iterator = new RecursiveIteratorIterator($directory, RecursiveIteratorIterator::LEAVES_ONLY);
+  foreach ($iterator as $file) {
+    if ($file->isDir()){
+      continue;
+    }
+    $filePath = $file->getRealPath();
+    if ($uploads_path && strpos($filePath, $uploads_path) === 0) {
+      continue;
+    }
+    if (preg_match('/\.(mp3|m4a|flac|ogg|wav)$/i', $filePath)) {
+      $files_on_disk[$filePath] = $file->getMTime();
     }
   }
-  
-  session_start(); $_SESSION['scan_status'] = 'finished'; $_SESSION['scan_message'] = "Scan complete. Processed $count files."; session_write_close();
+  echo "Found " . count($files_on_disk) . " music files on disk.\n\n";
+
+  echo "Step 5: Comparing disk files with database records...\n";
+  $files_to_add = array_diff_key($files_on_disk, $db_files);
+  $files_to_delete = array_diff_key($db_files, $files_on_disk);
+  $files_to_update = [];
+  $potential_updates = array_intersect_key($files_on_disk, $db_files);
+  foreach ($potential_updates as $path => $mtime) {
+    if ($mtime > $db_files[$path]) {
+      $files_to_update[$path] = $mtime;
+    }
+  }
+  echo " - To add: " . count($files_to_add) . "\n";
+  echo " - To update: " . count($files_to_update) . "\n";
+  echo " - To delete: " . count($files_to_delete) . "\n\n";
+
+  $files_to_process = $files_to_add + $files_to_update;
+  if (empty($files_to_process) && empty($files_to_delete)) {
+    die("Scan complete. No changes detected.\n");
+  }
+
+  echo "Step 6: Processing changes...\n";
+  $getID3 = new getID3;
+  $insert_stmt = $db->prepare("INSERT INTO music (user_id, file, title, artist, album, genre, year, duration, image, last_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $update_stmt = $db->prepare("UPDATE music SET title=?, artist=?, album=?, genre=?, year=?, duration=?, image=?, last_modified=? WHERE file=?");
+  $delete_stmt = $db->prepare("DELETE FROM music WHERE file = ?");
+  $processed_count = 0;
+  $total_to_process = count($files_to_process) + count($files_to_delete);
+
+  $db->beginTransaction();
+  try {
+    foreach ($files_to_process as $filePath => $mtime) {
+      $processed_count++;
+      echo "[$processed_count/$total_to_process] Processing: " . basename($filePath) . "\n";
+      
+      $info = $getID3->analyze($filePath);
+      getid3_lib::CopyTagsToComments($info);
+      
+      $title = trim($info['comments']['title'][0] ?? pathinfo($filePath, PATHINFO_FILENAME));
+      $artist = trim($info['comments']['artist'][0] ?? 'Unknown Artist');
+      $album = trim($info['comments']['album'][0] ?? 'Unknown Album');
+      $genre = trim($info['comments']['genre'][0] ?? 'Unknown Genre');
+      $year = (int)($info['comments']['year'][0] ?? 0);
+      $duration = (int)($info['playtime_seconds'] ?? 0);
+      $raw_image_data = $info['comments']['picture'][0]['data'] ?? null;
+      $webp_image_data = process_image_to_webp($raw_image_data);
+      
+      if (isset($files_to_add[$filePath])) {
+        $insert_stmt->execute([$library_user_id, $filePath, $title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime]);
+      } else {
+        $update_stmt->execute([$title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime, $filePath]);
+      }
+    }
+
+    foreach ($files_to_delete as $filePath => $mtime) {
+      $processed_count++;
+      echo "[$processed_count/$total_to_process] Deleting: " . basename($filePath) . "\n";
+      $delete_stmt->execute([$filePath]);
+    }
+    
+    $db->commit();
+  } catch (Exception $e) {
+    if ($db->inTransaction()) {
+      $db->rollBack();
+    }
+    die("\nERROR: An exception occurred during database operations: " . $e->getMessage() . "\nProcess aborted.\n");
+  }
+
+  echo "\n=======================\n";
+  echo "Scan completed successfully!\n";
+  echo "Total files processed: $processed_count\n";
 }
 ?>
 <!DOCTYPE html>
@@ -2312,9 +2466,13 @@ function scan_music_directory($db) {
             <i class="bi bi-cloud-upload-fill"></i>
             <span>Upload Song</span>
           </a>
-          <a href="#" class="nav-link logged-in-only" id="scan-btn">
+          <a href="#" class="nav-link" id="scan-btn">
             <i class="bi bi-arrow-repeat"></i>
             <span>Scan Library</span>
+          </a>
+          <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#emergency-scan-modal">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>Emergency Scan</span>
           </a>
           <a href="#" class="nav-link logged-in-only" data-bs-toggle="modal" data-bs-target="#settings-modal">
             <i class="bi bi-gear-fill"></i>
@@ -2644,6 +2802,19 @@ function scan_music_directory($db) {
         </div>
       </div>
     </div>
+    <div class="modal fade" id="emergency-scan-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header border-0">
+            <h5 class="modal-title">Emergency Scan Log</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body p-0">
+            <iframe id="emergency-scan-iframe" src="about:blank" style="width: 100%; height: 60vh; border: none; background-color: #030303;"></iframe>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -2685,6 +2856,8 @@ function scan_music_directory($db) {
         const shareModalText = document.getElementById('share-modal-text');
         const shareUrlInput = document.getElementById('share-url-input');
         const copyShareUrlBtn = document.getElementById('copy-share-url-btn');
+        const emergencyScanModalEl = document.getElementById('emergency-scan-modal');
+        const emergencyScanIframe = document.getElementById('emergency-scan-iframe');
 
         const playerTrackInfoMobile = document.querySelector('.player-bar .track-info.d-md-none');
         const playerModalEl = document.getElementById('player-modal');
@@ -3542,7 +3715,7 @@ function scan_music_directory($db) {
         };
 
         allNavLinks.forEach(link => {
-          if (link.id === 'logout-btn' || link.id === 'scan-btn' || link.getAttribute('data-bs-toggle') === 'modal' || link.id === 'install-pwa-btn' || link.id === 'clear-cache-btn') return;
+          if (link.getAttribute('data-bs-toggle') === 'modal' || link.id === 'logout-btn' || link.id === 'scan-btn' || link.id === 'install-pwa-btn' || link.id === 'clear-cache-btn') return;
           link.addEventListener('click', e => {
             e.preventDefault();
             const navLink = e.currentTarget;
@@ -3600,6 +3773,18 @@ function scan_music_directory($db) {
             }
           }, 2000);
         });
+
+        if (emergencyScanModalEl && emergencyScanIframe) {
+          emergencyScanModalEl.addEventListener('show.bs.modal', () => {
+            emergencyScanIframe.src = '?action=emergency_scan';
+          });
+          emergencyScanModalEl.addEventListener('hidden.bs.modal', () => {
+            emergencyScanIframe.src = 'about:blank';
+            if (currentView.type === 'get_songs') {
+              loadView(currentView);
+            }
+          });
+        }
         
         playerElements.playPauseBtn.forEach(btn => btn.addEventListener('click', togglePlayPause));
         playerElements.prevBtn.forEach(btn => btn.addEventListener('click', playPrev));
