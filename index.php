@@ -2620,6 +2620,30 @@ function scan_music_directory($db) {
         </div>
       </div>
     </div>
+    <div class="modal fade" id="share-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header border-0">
+            <h5 class="modal-title" id="share-modal-title">Share</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-secondary text-center mb-4" id="share-modal-text">Share this with your friends!</p>
+            <div class="d-flex justify-content-center gap-3 mb-4 fs-2">
+              <a href="#" id="share-facebook" target="_blank" class="text-white"><i class="bi bi-facebook"></i></a>
+              <a href="#" id="share-twitter" target="_blank" class="text-white"><i class="bi bi-twitter-x"></i></a>
+              <a href="#" id="share-whatsapp" target="_blank" class="text-white"><i class="bi bi-whatsapp"></i></a>
+              <a href="#" id="share-telegram" target="_blank" class="text-white"><i class="bi bi-telegram"></i></a>
+            </div>
+            <p class="small text-secondary">Or copy the link</p>
+            <div class="input-group">
+              <input type="text" class="form-control" id="share-url-input" readonly>
+              <button class="btn btn-danger" type="button" id="copy-share-url-btn">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -2655,6 +2679,12 @@ function scan_music_directory($db) {
         const metadataModalEl = document.getElementById('metadata-modal');
         const metadataModal = metadataModalEl ? new bootstrap.Modal(metadataModalEl) : null;
         const metadataModalBody = document.getElementById('metadata-modal-body');
+        const shareModalEl = document.getElementById('share-modal');
+        const shareModal = shareModalEl ? new bootstrap.Modal(shareModalEl) : null;
+        const shareModalTitle = document.getElementById('share-modal-title');
+        const shareModalText = document.getElementById('share-modal-text');
+        const shareUrlInput = document.getElementById('share-url-input');
+        const copyShareUrlBtn = document.getElementById('copy-share-url-btn');
 
         const playerTrackInfoMobile = document.querySelector('.player-bar .track-info.d-md-none');
         const playerModalEl = document.getElementById('player-modal');
@@ -3323,28 +3353,23 @@ function scan_music_directory($db) {
           }
         };
         
-        const handleShare = async (type, id, name) => {
-          const url = `${window.location.origin}${window.location.pathname}?share_type=${type}&id=${id}`;
-          const shareData = {
-            title: `PHP Music: ${decodeURIComponent(name)}`,
-            text: `Check out ${decodeURIComponent(name)} on PHP Music Player!`,
-            url: url,
-          };
+        const showShareModal = (type, id, name) => {
+          const decodedName = decodeURIComponent(name);
+          const shareUrl = `${window.location.origin}${window.location.pathname}?share_type=${type}&id=${id}`;
 
-          if (navigator.share && navigator.canShare(shareData)) {
-            try {
-              await navigator.share(shareData);
-            } catch (err) {
-              if (err.name !== 'AbortError') console.error('Share failed:', err);
-            }
-          } else {
-            try {
-              await navigator.clipboard.writeText(url);
-              showToast('Share link copied to clipboard!', 'success');
-            } catch (err) {
-              showToast('Could not copy link.', 'error');
-            }
-          }
+          shareModalTitle.textContent = `Share "${decodedName}"`;
+          shareModalText.textContent = `Share this ${type} with your friends!`;
+          shareUrlInput.value = shareUrl;
+
+          document.getElementById('share-facebook').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+          document.getElementById('share-twitter').href = `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Check out ${decodedName} on PHP Music`)}`;
+          document.getElementById('share-whatsapp').href = `https://api.whatsapp.com/send?text=${encodeURIComponent(`Check out ${decodedName} on PHP Music: ${shareUrl}`)}`;
+          document.getElementById('share-telegram').href = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Check out ${decodedName} on PHP Music`)}`;
+          
+          copyShareUrlBtn.textContent = 'Copy';
+          copyShareUrlBtn.disabled = false;
+
+          if (shareModal) shareModal.show();
         };
 
         const buildAndShowContextMenu = (buttonEl, songData) => {
@@ -3638,7 +3663,7 @@ function scan_music_directory($db) {
             e.stopPropagation();
             const type = currentView.type.split('_')[0];
             const { shareId, shareName } = shareBtn.dataset;
-            handleShare(type, shareId, shareName);
+            showShareModal(type, shareId, shareName);
             return;
           }
           const createPlaylistBtn = target.closest('#create-new-playlist-btn');
@@ -3719,7 +3744,7 @@ function scan_music_directory($db) {
             case 'close_menu':
               break;
             case 'share_song':
-              handleShare('song', id, name);
+              showShareModal('song', id, name);
               break;
             case 'go_artist':
             case 'go_album':
@@ -4075,6 +4100,22 @@ function scan_music_directory($db) {
           songFilesInput.value = '';
           songGenreInput.value = '';
         });
+
+        if (copyShareUrlBtn) {
+          copyShareUrlBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(shareUrlInput.value).then(() => {
+              copyShareUrlBtn.textContent = 'Copied!';
+              copyShareUrlBtn.disabled = true;
+              setTimeout(() => {
+                copyShareUrlBtn.textContent = 'Copy';
+                copyShareUrlBtn.disabled = false;
+              }, 2000);
+            }).catch(err => {
+              console.error('Failed to copy: ', err);
+              showToast('Failed to copy link.', 'error');
+            });
+          });
+        }
 
         function updateUIForAuthState() {
           document.body.classList.toggle('logged-in', !!currentUser);
