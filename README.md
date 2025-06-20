@@ -1,6 +1,6 @@
 # PHP Music Player
 
-A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, create playlists, and manage your collection with ease. Multiple users, uploads, admin panel, favorites, drag-and-drop, and more.
+A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, and manage your library—all in one place.
 
 ![1](https://github.com/user-attachments/assets/0376f90c-12a9-45bf-acc4-ef14e0fe9ff3)
 ![2](https://github.com/user-attachments/assets/c0b1a692-4504-4701-b921-d54fc7360b5c) 
@@ -29,6 +29,7 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 - 🔗 **Shareable Views**: Share direct links to songs, albums, artists, and playlists with others.
 - 🗂️ **Infinite Scroll and Pagination**: Large libraries load smoothly with infinite scroll support.
 - 📑 **Metadata View**: View song metadata (title, artist, album, genre, year, duration) from the context menu.
+- 🆘 **Emergency Rescan**: If the library is corrupted or missing, an emergency scan can be performed to rebuild the database.
 
 ## Demo
 
@@ -134,6 +135,7 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - **Register/Login**: Create a user account for full features (upload, scan, delete, edit, favorites, playlists).
 - **Account Verification**: After registering, your account must be verified by an admin before you can upload music. Unverified users can still scan, browse, and play music.
 - **Scan Library**: Click "Scan Library" in the sidebar to index or refresh your library (scans all music except uploads).
+- **Emergency Rescan**: If the database is missing or corrupted, an emergency rescan can be triggered from the UI or by using a special action to rebuild your music library.
 - **Browse**: Use the sidebar to view all songs, favorites, albums, artists, genres, or your own uploads.
 - **Playlists**: Create, edit, and drag-to-reorder your own custom playlists. Add/remove songs easily.
 - **Search**: Use the search bar (desktop/mobile) to instantly find songs, albums, or artists.
@@ -168,6 +170,7 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - Only the uploading user (or admin) can edit genre, delete, or download their uploads.
 - Playlists and favorites support drag-and-drop ordering.
 - Shareable views use query parameters for albums, artists, playlists, or specific songs.
+- **Emergency Scan**: If the music database is missing or corrupted, the app can attempt to rebuild it by rescanning the music directory.
 
 ## Customization
 
@@ -187,7 +190,7 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 
 ## Troubleshooting
 
-- **Scan errors**: Ensure `getid3/` exists and is accessible, and PHP can read music files and write `music.db`.
+- **Scan errors**: Ensure `getid3/` exists and is accessible, and PHP can read music files and write `music.db`. If the database is missing/corrupt, use the emergency rescan.
 - **Upload errors**: Make sure the `uploads/` directory is writable and PHP settings allow large enough uploads (`upload_max_filesize`, `post_max_size`). Ensure your account is verified.
 - **Missing album art**: Some files may lack embedded images (default SVG will show).
 - **Playback issues**: Browser support for some formats (like FLAC) may be limited.
