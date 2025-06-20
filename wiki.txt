@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PHP Music Player Documentation</title>
+    <meta name="theme-color" content="#121212">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --ytm-bg: #030303;
+        --ytm-surface: #121212;
+        --ytm-surface-2: #282828;
+        --ytm-primary-text: #ffffff;
+        --ytm-secondary-text: #aaaaaa;
+        --ytm-accent: #ff0000;
+        --doc-nav-width: 260px;
+      }
+      html, body {
+        background: var(--ytm-bg)!important;
+        color: var(--ytm-primary-text)!important;
+        font-family: 'Roboto', sans-serif;
+        height: 100%;
+        min-height: 100vh;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      .text-wrap, .doc-main, .callout, .doc-card, .accordion, .doc-header, .section-title, .doc-navbar, .nav-link, .table, .table-wrapper, th, td, pre, code, ul, ol, .accordion-button, .accordion-body, .logo {
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        white-space: normal !important;
+      }
+      .doc-navbar {
+        background: var(--ytm-bg);
+        border-right: 1px solid var(--ytm-surface-2);
+        min-height: 100vh;
+        width: var(--doc-nav-width);
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 1040;
+        transition: all .2s;
+        padding-bottom: 3rem;
+      }
+      .doc-navbar .logo {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--ytm-primary-text);
+        padding: 2rem 1.5rem 1rem 1.5rem;
+        letter-spacing: 1px;
+      }
+      .doc-navbar .logo span {
+        color: var(--ytm-accent);
+      }
+      .doc-navbar .nav-link {
+        color: var(--ytm-secondary-text);
+        font-weight: 500;
+        border-left: 3px solid transparent;
+        border-radius: 0 1rem 1rem 0;
+        padding: 0.75rem 2rem;
+        transition: background .1s, color .1s, border .2s;
+      }
+      .doc-navbar .nav-link.active, .doc-navbar .nav-link:hover {
+        background: var(--ytm-surface-2);
+        color: var(--ytm-primary-text);
+        border-left: 3px solid var(--ytm-accent);
+      }
+      .doc-navbar .nav-link i {
+        margin-right: 1rem;
+        font-size: 1.2rem;
+      }
+      .doc-content {
+        margin-left: var(--doc-nav-width);
+        background: var(--ytm-bg);
+        min-height: 100vh;
+        padding: 0;
+      }
+      .doc-header {
+        background: var(--ytm-surface);
+        padding: 2rem 2rem 1rem 2rem;
+        border-bottom: 1px solid var(--ytm-surface-2);
+      }
+      .doc-header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--ytm-primary-text);
+        letter-spacing: 0.02em;
+      }
+      .doc-main {
+        padding: 2rem 2rem 4rem 2rem;
+        max-width: 900px;
+        margin: 0 auto;
+      }
+      .section-title {
+        font-size: 2rem;
+        color: var(--ytm-accent);
+        font-weight: 700;
+        margin-top: 2.5rem;
+        margin-bottom: 1rem;
+        letter-spacing: 0.01em;
+      }
+      .doc-card {
+        background: var(--ytm-surface-2);
+        border: none;
+        border-radius: 1rem;
+        margin-bottom: 2rem;
+        color: var(--ytm-primary-text);
+        box-shadow: 0 4px 24px 0 rgba(0,0,0,.25);
+      }
+      .doc-card .card-header {
+        background: transparent;
+        border-bottom: 1px solid var(--ytm-surface);
+        font-size: 1.1rem;
+        color: var(--ytm-accent);
+        font-weight: 500;
+      }
+      .doc-card code, .doc-main code {
+        background: #272727;
+        color: var(--ytm-accent);
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 1em;
+      }
+      .doc-main pre {
+        background: #272727;
+        color: var(--ytm-primary-text);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.2rem;
+        font-size: 1em;
+        overflow-x: auto;
+      }
+      .doc-main ul, .doc-main ol {
+        color: var(--ytm-primary-text);
+        font-size: 1.05em;
+      }
+      .doc-main a {
+        color: var(--ytm-accent);
+        text-decoration: underline;
+      }
+      /* Table Responsive Overflow */
+      .doc-main .table-wrapper {
+        width: 100%;
+        overflow-x: auto;
+        margin-bottom: 2rem;
+        -webkit-overflow-scrolling: touch;
+      }
+      .doc-main table {
+        background: var(--ytm-surface-2);
+        color: var(--ytm-primary-text);
+        border-radius: 0.5rem;
+        overflow: hidden;
+        margin-bottom: 0;
+        min-width: 600px;
+        width: 100%;
+      }
+      .doc-main th, .doc-main td {
+        border-color: var(--ytm-surface);
+        color: var(--ytm-primary-text);
+      }
+      .badge-ytm {
+        background: var(--ytm-accent);
+        color: #fff;
+        font-weight: 700;
+      }
+      .callout {
+        border-left: 5px solid var(--ytm-accent);
+        background: #2c2c2c;
+        color: var(--ytm-primary-text);
+        padding: 1rem 1.5rem;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+      }
+      .callout i {
+        color: var(--ytm-accent);
+        margin-right: 0.5rem;
+      }
+      @media (max-width: 991.98px) {
+        .doc-navbar {
+          position: static;
+          width: 100vw;
+          min-height: unset;
+          border-right: none;
+          border-bottom: 1px solid var(--ytm-surface-2);
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          padding: 0;
+          z-index: 1000;
+        }
+        .doc-navbar .logo {
+          font-size: 1.2rem;
+          padding: 1rem 1rem 1rem 1rem;
+        }
+        .doc-navbar .nav {
+          flex-direction: row;
+          gap: 0.5rem;
+        }
+        .doc-navbar .nav-link {
+          padding: 0.5rem 1rem;
+          border-left: none;
+          border-bottom: 3px solid transparent;
+          border-radius: 0;
+          font-size: 1rem;
+        }
+        .doc-navbar .nav-link.active, .doc-navbar .nav-link:hover {
+          border-left: none;
+          border-bottom: 3px solid var(--ytm-accent);
+          background: var(--ytm-surface-2);
+        }
+        .doc-content {
+          margin-left: 0;
+        }
+        .doc-header, .doc-main {
+          padding: 1rem !important;
+        }
+        .section-title {
+          font-size: 1.5rem;
+          margin-top: 2rem;
+        }
+      }
+      @media (max-width: 576px) {
+        .doc-header h1 {
+          font-size: 1.4rem;
+        }
+        .doc-main {
+          padding: 1rem 0.3rem;
+        }
+        .section-title {
+          font-size: 1.2rem;
+        }
+        .doc-main .table-wrapper {
+          min-width: 0;
+        }
+        .doc-main table {
+          min-width: 500px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Side Navbar / Top Navbar -->
+    <nav class="doc-navbar d-flex flex-column flex-lg-column flex-md-row align-items-start align-items-md-center">
+      <div class="logo text-wrap"><i class="bi bi-boombox-fill"></i> PHP<span>Music</span> <span class="d-none d-md-inline">Docs</span></div>
+      <ul class="nav flex-column flex-md-row w-100 text-wrap">
+        <li class="nav-item"><a class="nav-link active text-wrap" href="#introduction"><i class="bi bi-house-fill"></i>Introduction</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#features"><i class="bi bi-stars"></i>Features</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#installation"><i class="bi bi-download"></i>Install</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#usage"><i class="bi bi-music-note-list"></i>Usage</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#admin"><i class="bi bi-person-gear"></i>Admin</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#api"><i class="bi bi-code-slash"></i>API</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#faq"><i class="bi bi-question-circle"></i>FAQ</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#pwa"><i class="bi bi-phone"></i>PWA</a></li>
+        <li class="nav-item"><a class="nav-link text-wrap" href="#license"><i class="bi bi-file-earmark-text"></i>License</a></li>
+      </ul>
+    </nav>
+    <!-- Main Documentation Content -->
+    <div class="doc-content text-wrap">
+      <div class="doc-header text-wrap">
+        <h1 class="text-wrap">
+          <i class="bi bi-boombox-fill text-danger"></i> PHP Music Player <span class="badge badge-ytm ms-2">v1.2</span>
+        </h1>
+        <div class="text-secondary mt-2 fs-5 text-wrap">A self-hosted, modern, elegant music player inspired by YouTube Music.</div>
+      </div>
+      <div class="doc-main text-wrap">
+        <!-- Introduction -->
+        <a id="introduction"></a>
+        <div class="section-title text-wrap"><i class="bi bi-house-fill"></i> Introduction</div>
+        <div class="callout text-wrap">
+          <i class="bi bi-info-circle-fill"></i>
+          <b>PHP Music Player</b> is an open-source, web-based music player designed for self-hosting. Enjoy your music library from any device, with a beautiful dark UI and responsive design inspired by YouTube Music!
+        </div>
+        <ul class="text-wrap">
+          <li>🎵 <b>Upload, organize, and play</b> your music from anywhere.</li>
+          <li>🔒 <b>User accounts</b> with verification and daily upload limits.</li>
+          <li>📱 <b>Progressive Web App</b> (PWA) support: install on your phone!</li>
+          <li>🖼️ Modern <b>dark theme</b> and responsive layout.</li>
+          <li>🛠️ <b>Admin panel</b> for user management.</li>
+        </ul>
+
+        <!-- Features -->
+        <a id="features"></a>
+        <div class="section-title text-wrap"><i class="bi bi-stars"></i> Features</div>
+        <div class="row row-cols-1 row-cols-md-2 g-4 text-wrap">
+          <div class="col text-wrap">
+            <div class="card doc-card h-100 text-wrap">
+              <div class="card-header text-wrap"><i class="bi bi-music-note-list"></i> Music Management</div>
+              <div class="card-body text-wrap">Upload, edit, and delete your own songs. Organize by artist, album, or genre. Create favorites and playlists.</div>
+            </div>
+          </div>
+          <div class="col text-wrap">
+            <div class="card doc-card h-100 text-wrap">
+              <div class="card-header text-wrap"><i class="bi bi-person-badge"></i> User Accounts</div>
+              <div class="card-body text-wrap">Register as a user, manage your profile, change your password, and upload music (with verification).</div>
+            </div>
+          </div>
+          <div class="col text-wrap">
+            <div class="card doc-card h-100 text-wrap">
+              <div class="card-header text-wrap"><i class="bi bi-cloud-arrow-up"></i> Uploads & Limits</div>
+              <div class="card-body text-wrap">Upload up to <b>5 songs per day</b>, with support for MP3, FLAC, M4A, OGG, and more. <span class="badge bg-info ms-1">Admin can verify users for upload.</span></div>
+            </div>
+          </div>
+          <div class="col text-wrap">
+            <div class="card doc-card h-100 text-wrap">
+              <div class="card-header text-wrap"><i class="bi bi-palette2"></i> YT Music Theme</div>
+              <div class="card-body text-wrap">Sleek, dark, mobile-first interface inspired by YouTube Music. Responsive design using Bootstrap 5.</div>
+            </div>
+          </div>
+          <div class="col text-wrap">
+            <div class="card doc-card h-100 text-wrap">
+              <div class="card-header text-wrap"><i class="bi bi-gear"></i> Admin Panel</div>
+              <div class="card-body text-wrap">Manage users, verify accounts, and monitor uploads from a secure admin dashboard.</div>
+            </div>
+          </div>
+          <div class="col text-wrap">
+            <div class="card doc-card h-100 text-wrap">
+              <div class="card-header text-wrap"><i class="bi bi-phone"></i> PWA Support</div>
+              <div class="card-body text-wrap">Add to Home Screen on your mobile device for an app-like experience. Works offline!</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Installation -->
+        <a id="installation"></a>
+        <div class="section-title text-wrap"><i class="bi bi-download"></i> Installation</div>
+        <ol class="text-wrap">
+          <li><b>Clone the repository:</b>
+            <pre class="text-wrap"><code class="text-wrap">git clone https://github.com/HirotakaDango/PHP-Music-Player.git</code></pre>
+          </li>
+          <li><b>Install dependencies:</b>
+            <ul class="text-wrap">
+              <li>PHP 7.4+ (<code>pdo_sqlite</code>, <code>gd</code>)</li>
+              <li>Web server (Apache/Nginx) or PHP built-in server</li>
+              <li>getID3 library (included as subfolder <code>getid3/</code>)</li>
+            </ul>
+          </li>
+          <li><b>Set permissions:</b>
+            <pre class="text-wrap"><code class="text-wrap">chmod -R 755 uploads/</code></pre>
+          </li>
+          <li><b>Run the app:</b>
+            <pre class="text-wrap"><code class="text-wrap">php -S localhost:8080</code></pre>
+            <div class="text-secondary mt-2 text-wrap">Or deploy to your webserver's public directory.</div>
+          </li>
+          <li><b>Visit:</b>
+            <code class="text-wrap">http://localhost:8080/</code>
+          </li>
+        </ol>
+        <div class="callout text-wrap">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <b>Security Tip:</b> Change the <code>ADMIN_PASSWORD</code> in <code>index.php</code> for production!
+        </div>
+
+        <!-- Usage -->
+        <a id="usage"></a>
+        <div class="section-title text-wrap"><i class="bi bi-music-note-list"></i> Usage</div>
+        <div class="mb-3 text-wrap">
+          <b>As a user you can:</b>
+          <ul class="text-wrap">
+            <li>Register with your email & artist name</li>
+            <li>Wait for admin verification if upload is needed</li>
+            <li>Upload music (MP3, FLAC, etc.), edit genres, and create playlists</li>
+            <li>Create, reorder, and share playlists</li>
+            <li>Mark favorites, search by title, artist, album, or genre</li>
+          </ul>
+        </div>
+        <div class="mb-3 text-wrap">
+          <b>Music Playback:</b>
+          <ul class="text-wrap">
+            <li>Click a song to play, use player bar for controls (play/pause/skip/shuffle/repeat/volume)</li>
+            <li>Supports background playback (PWA + mobile)</li>
+            <li>Drag and drop to reorder favorites/playlists</li>
+          </ul>
+        </div>
+        <div class="mb-3 text-wrap">
+          <b>Share music & playlists:</b>
+          <ul class="text-wrap">
+            <li>Click the <i class="bi bi-share-fill"></i> share button on any playlist, album, artist, or song</li>
+            <li>Shareable links work for public playlists, albums, and songs</li>
+          </ul>
+        </div>
+        <div class="callout text-wrap">
+          <i class="bi bi-gear-wide-connected"></i>
+          For advanced usage, see the <a href="#api">API endpoints</a> below.
+        </div>
+
+        <!-- Admin Panel -->
+        <a id="admin"></a>
+        <div class="section-title text-wrap"><i class="bi bi-person-gear"></i> Admin Panel</div>
+        <ul class="text-wrap">
+          <li>Access via <code>?access=admin</code> (e.g., <code>http://localhost:8080/?access=admin</code>)</li>
+          <li>Login with admin password (default: <code>admin</code> - <b>change this!</b>)</li>
+          <li>View and verify users, toggle their upload rights</li>
+          <li>Paginate users, see upload counts and last upload date</li>
+          <li>Log out securely with the <i class="bi bi-box-arrow-left"></i> button</li>
+        </ul>
+        <div class="callout text-wrap">
+          <i class="bi bi-lock-fill"></i>
+          Only admins (server owners) can verify users and manage accounts.
+        </div>
+
+        <!-- API -->
+        <a id="api"></a>
+        <div class="section-title text-wrap"><i class="bi bi-code-slash"></i> API Endpoints</div>
+        <div class="table-wrapper text-wrap">
+          <table class="table table-dark table-bordered mb-0 text-wrap">
+            <thead>
+              <tr>
+                <th class="text-wrap">Endpoint</th>
+                <th class="text-wrap">Method</th>
+                <th class="text-wrap">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="text-wrap"><code>?action=register</code></td>
+                <td class="text-wrap">POST (json)</td>
+                <td class="text-wrap">Register new user (<code>email</code>, <code>artist</code>, <code>password</code>)</td>
+              </tr>
+              <tr>
+                <td class="text-wrap"><code>?action=login</code></td>
+                <td class="text-wrap">POST (json)</td>
+                <td class="text-wrap">Login (<code>email</code>, <code>password</code>)</td>
+              </tr>
+              <tr>
+                <td class="text-wrap"><code>?action=upload_song</code></td>
+                <td class="text-wrap">POST (form-data)</td>
+                <td class="text-wrap">Upload a song file (verified users only)</td>
+              </tr>
+              <tr>
+                <td class="text-wrap"><code>?action=get_songs</code></td>
+                <td class="text-wrap">GET</td>
+                <td class="text-wrap">List all songs (supports <code>sort</code>, <code>page</code>, <code>artist</code>, <code>album</code>, <code>genre</code>)</td>
+              </tr>
+              <tr>
+                <td class="text-wrap"><code>?action=toggle_favorite</code></td>
+                <td class="text-wrap">POST (json)</td>
+                <td class="text-wrap">Add/remove favorite song</td>
+              </tr>
+              <tr>
+                <td class="text-wrap"><code>?action=create_playlist</code></td>
+                <td class="text-wrap">POST (json)</td>
+                <td class="text-wrap">Create a new playlist</td>
+              </tr>
+              <tr>
+                <td class="text-wrap"><code>?action=get_user_playlists</code></td>
+                <td class="text-wrap">GET</td>
+                <td class="text-wrap">List your playlists</td>
+              </tr>
+              <tr>
+                <td class="text-wrap"><code>?action=get_stream&id=SONG_ID</code></td>
+                <td class="text-wrap">GET</td>
+                <td class="text-wrap">Stream audio file</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mb-3 text-wrap">
+          All API endpoints return <code>application/json</code> unless streaming.
+        </div>
+
+        <!-- FAQ -->
+        <a id="faq"></a>
+        <div class="section-title text-wrap"><i class="bi bi-question-circle"></i> FAQ</div>
+        <div class="accordion text-wrap" id="faqAccordion">
+          <div class="accordion-item bg-transparent border-secondary text-wrap">
+            <h2 class="accordion-header text-wrap" id="faq1-h">
+              <button class="accordion-button bg-dark text-white text-wrap" type="button" data-bs-toggle="collapse" data-bs-target="#faq1" aria-expanded="true">
+                How do I install the app on my phone?
+              </button>
+            </h2>
+            <div id="faq1" class="accordion-collapse collapse show text-wrap" data-bs-parent="#faqAccordion">
+              <div class="accordion-body text-wrap">
+                Open the site in your browser (Chrome/Safari/Edge), tap the <b>menu (⋮)</b> and select <b>Add to Home Screen</b>. The app installs as a PWA!
+              </div>
+            </div>
+          </div>
+          <div class="accordion-item bg-transparent border-secondary text-wrap">
+            <h2 class="accordion-header text-wrap" id="faq2-h">
+              <button class="accordion-button bg-dark text-white collapsed text-wrap" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                What audio formats are supported?
+              </button>
+            </h2>
+            <div id="faq2" class="accordion-collapse collapse text-wrap" data-bs-parent="#faqAccordion">
+              <div class="accordion-body text-wrap">
+                MP3, M4A, FLAC, OGG, WAV, and more (as supported by your browser via <code>audio</code> tag).
+              </div>
+            </div>
+          </div>
+          <div class="accordion-item bg-transparent border-secondary text-wrap">
+            <h2 class="accordion-header text-wrap" id="faq3-h">
+              <button class="accordion-button bg-dark text-white collapsed text-wrap" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                How do I become a verified uploader?
+              </button>
+            </h2>
+            <div id="faq3" class="accordion-collapse collapse text-wrap" data-bs-parent="#faqAccordion">
+              <div class="accordion-body text-wrap">
+                Register an account, then ask your site admin to verify your account for uploads.
+              </div>
+            </div>
+          </div>
+          <div class="accordion-item bg-transparent border-secondary text-wrap">
+            <h2 class="accordion-header text-wrap" id="faq4-h">
+              <button class="accordion-button bg-dark text-white collapsed text-wrap" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                Can I customize the theme?
+              </button>
+            </h2>
+            <div id="faq4" class="accordion-collapse collapse text-wrap" data-bs-parent="#faqAccordion">
+              <div class="accordion-body text-wrap">
+                Yes! Edit the <code>:root</code> variables in the CSS for your own color palette.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PWA -->
+        <a id="pwa"></a>
+        <div class="section-title text-wrap"><i class="bi bi-phone"></i> Progressive Web App (PWA)</div>
+        <ul class="text-wrap">
+          <li>Automatically provides <code>manifest.json</code> and <code>service-worker</code> for offline support</li>
+          <li>Installable on mobile and desktop (works offline for static assets and recent songs)</li>
+          <li>Customizable app icon and theme color</li>
+          <li>No extra configuration needed!</li>
+        </ul>
+        <div class="mb-3 text-wrap"><b>Tip:</b> If you update the app, users may need to refresh for cache updates.</div>
+        <pre class="text-wrap"><code class="text-wrap">https://your-domain/index.php?pwa=manifest
+https://your-domain/index.php?pwa=sw</code></pre>
+
+        <!-- License -->
+        <a id="license"></a>
+        <div class="section-title text-wrap"><i class="bi bi-file-earmark-text"></i> License</div>
+        <div class="mb-3 text-wrap">
+          <b>MIT License</b> – Free for personal and commercial use. <br>
+          <a href="https://github.com/HirotakaDango/PHP-Music-Player" class="text-accent">GitHub Repo &rarr;</a>
+        </div>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      // Highlight nav on scroll
+      document.addEventListener('DOMContentLoaded', function () {
+        const navLinks = document.querySelectorAll('.doc-navbar .nav-link');
+        const sections = Array.from(document.querySelectorAll('.section-title')).map(s => s.previousElementSibling ? s.previousElementSibling : s);
+        window.addEventListener('scroll', function () {
+          let curr = 0;
+          sections.forEach((section, i) => {
+            const top = section.getBoundingClientRect().top + window.pageYOffset - 90;
+            if (window.scrollY >= top) curr = i;
+          });
+          navLinks.forEach(l => l.classList.remove('active'));
+          navLinks[curr].classList.add('active');
+        });
+        navLinks.forEach(link => {
+          link.addEventListener('click', function (e) {
+            e.preventDefault();
+            const href = this.getAttribute('href');
+            if (href.startsWith('#')) {
+              const target = document.querySelector(href);
+              if (target) {
+                const y = target.getBoundingClientRect().top + window.pageYOffset - 70;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+              }
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
