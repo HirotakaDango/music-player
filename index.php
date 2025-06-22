@@ -27,7 +27,7 @@ if (isset($_GET['pwa'])) {
   if ($_GET['pwa'] == 'sw') {
     header('Content-Type: application/javascript; charset=utf-8');
     echo <<<SW
-    const CACHE_NAME = 'php-music-cache-v15';
+    const CACHE_NAME = 'php-music-cache-v21';
     const STATIC_ASSETS = [
       './',
       'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css',
@@ -79,7 +79,7 @@ if (isset($_GET['pwa'])) {
         })
       );
     });
-    SW;
+SW;
     exit;
   }
 }
@@ -90,12 +90,12 @@ set_time_limit(0);
 
 define('MUSIC_DIR', __DIR__);
 define('DB_FILE', __DIR__ . '/music.db');
-define('APP_VERSION', '1.2');
+define('APP_VERSION', '1.8');
 define('PAGE_SIZE', 25);
 define('ADMIN_PAGE_SIZE', 20);
 define('ADMIN_PASSWORD', 'admin');
 define('ADMIN_PASSWORD_HASH', password_hash(ADMIN_PASSWORD, PASSWORD_DEFAULT));
-define('DAILY_UPLOAD_LIMIT', 5);
+define('DAILY_UPLOAD_LIMIT', 10);
 
 function get_db() {
   try {
@@ -435,7 +435,6 @@ if (isset($_GET['share_type']) && isset($_GET['id'])) {
   }
 }
 
-
 function init_db($db) {
   $db->exec("PRAGMA journal_mode=WAL;");
   $db->exec("PRAGMA foreign_keys = ON;");
@@ -451,7 +450,9 @@ function init_db($db) {
       password_hash TEXT,
       last_upload_date TEXT,
       daily_upload_count INTEGER DEFAULT 0,
-      verified TEXT DEFAULT 'no'
+      verified TEXT DEFAULT 'no',
+      profile_picture BLOB,
+      profile_picture_type TEXT
     );
   ");
 
@@ -464,6 +465,12 @@ function init_db($db) {
     }
     if (!in_array('verified', $users_columns)) {
       $db->exec("ALTER TABLE users ADD COLUMN verified TEXT DEFAULT 'no';");
+    }
+    if (!in_array('profile_picture', $users_columns)) {
+      $db->exec("ALTER TABLE users ADD COLUMN profile_picture BLOB;");
+    }
+    if (!in_array('profile_picture_type', $users_columns)) {
+      $db->exec("ALTER TABLE users ADD COLUMN profile_picture_type TEXT;");
     }
   }
 
@@ -515,6 +522,29 @@ function init_db($db) {
     );
   ");
 
+  $db->exec("
+    CREATE TABLE IF NOT EXISTS history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      song_id INTEGER NOT NULL,
+      played_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (song_id) REFERENCES music(id) ON DELETE CASCADE
+    );
+  ");
+
+  $db->exec("
+    CREATE TABLE IF NOT EXISTS play_counts (
+      user_id INTEGER NOT NULL,
+      song_id INTEGER NOT NULL,
+      play_count INTEGER DEFAULT 1,
+      last_played DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, song_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (song_id) REFERENCES music(id) ON DELETE CASCADE
+    );
+  ");
+
   $db->exec("CREATE INDEX IF NOT EXISTS music_artist_idx ON music(artist);");
   $db->exec("CREATE INDEX IF NOT EXISTS music_album_idx ON music(album);");
   $db->exec("CREATE INDEX IF NOT EXISTS music_genre_idx ON music(genre);");
@@ -523,6 +553,8 @@ function init_db($db) {
   $db->exec("CREATE INDEX IF NOT EXISTS playlists_user_id_idx ON playlists(user_id);");
   $db->exec("CREATE INDEX IF NOT EXISTS playlists_public_id_idx ON playlists(public_id);");
   $db->exec("CREATE INDEX IF NOT EXISTS playlist_songs_playlist_id_idx ON playlist_songs(playlist_id);");
+  $db->exec("CREATE INDEX IF NOT EXISTS history_user_id_idx ON history(user_id);");
+  $db->exec("CREATE INDEX IF NOT EXISTS play_counts_user_id_idx ON play_counts(user_id);");
 
   $stmt = $db->query("SELECT id FROM users WHERE email = 'musiclibrary@mail.com'");
   if (!$stmt->fetch()) {
@@ -543,23 +575,20 @@ function get_upload_limit() {
   return "Max file size: " . min($max_upload, $max_post);
 }
 
-function process_image_to_webp($imageData) {
+function process_image_to_webp($imageData, $target_width = 250, $quality = 75) {
   if (!$imageData || !function_exists('imagecreatefromstring') || !function_exists('imagewebp')) {
     return null;
   }
   $sourceImage = @imagecreatefromstring($imageData);
   if (!$sourceImage) { return null; }
 
-  $target_width = 250;
-  $target_height = 250;
-
-  $resizedImage = imagecreatetruecolor($target_width, $target_height);
+  $resizedImage = imagecreatetruecolor($target_width, $target_width);
   imagealphablending($resizedImage, false);
   imagesavealpha($resizedImage, true);
-  imagecopyresampled($resizedImage, $sourceImage, 0, 0, 0, 0, $target_width, $target_height, imagesx($sourceImage), imagesy($sourceImage));
+  imagecopyresampled($resizedImage, $sourceImage, 0, 0, 0, 0, $target_width, $target_width, imagesx($sourceImage), imagesy($sourceImage));
 
   ob_start();
-  imagewebp($resizedImage, null, 75);
+  imagewebp($resizedImage, null, $quality);
   $webpData = ob_get_clean();
   imagedestroy($sourceImage);
   imagedestroy($resizedImage);
@@ -599,6 +628,7 @@ if (isset($_GET['action'])) {
             $uploads_today = (int)$user['daily_upload_count'];
           }
           $user['uploads_remaining'] = max(0, DAILY_UPLOAD_LIMIT - $uploads_today);
+          $user['profile_picture_url'] = "?action=get_profile_picture&id=" . $user['id'] . "&v=" . time();
           send_json(['status' => 'loggedin', 'user' => $user, 'upload_limit' => get_upload_limit()]);
         } else {
           session_destroy();
@@ -648,6 +678,7 @@ if (isset($_GET['action'])) {
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['user_artist'] = $user['artist'];
         unset($user['password_hash']);
+        $user['profile_picture_url'] = "?action=get_profile_picture&id=" . $user['id'] . "&v=" . time();
         send_json(['status' => 'success', 'user' => $user, 'upload_limit' => get_upload_limit()]);
       } else {
         http_response_code(401);
@@ -674,20 +705,53 @@ if (isset($_GET['action'])) {
       send_json(['status' => 'success', 'message' => 'Password changed successfully.']);
       break;
 
-    case 'scan':
-      send_json(['status' => 'starting']);
-      session_write_close();
-      ob_flush(); flush();
-      scan_music_directory($db);
+    case 'upload_profile_picture':
+      if (!$user_id) { http_response_code(403); send_json(['status' => 'error', 'message' => 'Not logged in.']); }
+      if (isset($_FILES['profile_picture'])) {
+        $file = $_FILES['profile_picture'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+          http_response_code(400);
+          send_json(['status' => 'error', 'message' => 'Upload error: ' . $file['error']]);
+        }
+        $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+        if (!in_array($file['type'], $allowed_types)) {
+          http_response_code(400);
+          send_json(['status' => 'error', 'message' => 'Invalid file type. Only JPG, PNG, GIF allowed.']);
+        }
+        $imageData = file_get_contents($file['tmp_name']);
+        $webpData = process_image_to_webp($imageData, 200, 80);
+        
+        if ($webpData) {
+          $stmt = $db->prepare("UPDATE users SET profile_picture = ?, profile_picture_type = ? WHERE id = ?");
+          $stmt->execute([$webpData, 'image/webp', $user_id]);
+          send_json(['status' => 'success', 'message' => 'Profile picture updated.']);
+        } else {
+          http_response_code(500);
+          send_json(['status' => 'error', 'message' => 'Failed to process image.']);
+        }
+      } else {
+        http_response_code(400);
+        send_json(['status' => 'error', 'message' => 'No file uploaded.']);
+      }
       break;
-    
-    case 'emergency_scan':
-      perform_emergency_scan($db);
+      
+    case 'get_profile_picture':
+      $pic_user_id = (int)($_GET['id'] ?? 0);
+      $stmt = $db->prepare("SELECT profile_picture, profile_picture_type FROM users WHERE id = ?");
+      $stmt->execute([$pic_user_id]);
+      $pic_data = $stmt->fetch();
+      if ($pic_data && $pic_data['profile_picture']) {
+        header('Content-Type: ' . $pic_data['profile_picture_type']);
+        echo $pic_data['profile_picture'];
+      } else {
+        header('Content-Type: image/svg+xml');
+        echo '<svg xmlns="http://www.w3.org/2000/svg" fill="#404040" viewBox="0 0 16 16"><path d="M11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/><path fill-rule="evenodd" d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8m8-7a7 7 0 0 0-5.468 11.37C3.242 11.226 4.805 10 8 10s4.757 1.225 5.468 2.37A7 7 0 0 0 8 1"/></svg>';
+      }
       exit;
 
-    case 'scan_status':
-      send_json(['status' => $_SESSION['scan_status'] ?? 'idle', 'message' => $_SESSION['scan_message'] ?? '']);
-      break;
+    case 'full_scan':
+      perform_full_scan($db);
+      exit;
 
     case 'upload_song':
       if (!$user_id) { http_response_code(403); exit; }
@@ -867,15 +931,17 @@ if (isset($_GET['action'])) {
 
     case 'get_profile_songs':
       if (!$user_id) { send_json([]); }
-      $sort_key = $_GET['sort'] ?? 'artist_asc';
+      $sort_key = $_GET['sort'] ?? 'title_asc';
       $sort_map = [
+        'id_desc' => 'ORDER BY m.id DESC',
+        'id_asc' => 'ORDER BY m.id ASC',
         'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
         'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC'
       ];
-      $order_by = $sort_map[$sort_key] ?? $sort_map['artist_asc'];
+      $order_by = $sort_map[$sort_key] ?? $sort_map['title_asc'];
       $stmt = $db->prepare("SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ? WHERE m.user_id = ? " . $order_by . $limit_clause);
       $stmt->execute([$user_id, $user_id]);
       send_json($stmt->fetchAll());
@@ -983,6 +1049,7 @@ if (isset($_GET['action'])) {
           if (!$user_id) { send_json([]); }
           $conditions = "WHERE m.user_id = ?";
           $params[] = $user_id;
+          $default_sort = 'title_asc';
           break;
         case 'get_favorites':
           if (!$user_id) { send_json([]); }
@@ -990,6 +1057,13 @@ if (isset($_GET['action'])) {
           $conditions = "WHERE f.user_id = ?";
           $params[] = $user_id;
           $default_sort = 'manual_order';
+          break;
+        case 'get_history':
+          if (!$user_id) { send_json([]); }
+          $sql = "SELECT m.id FROM music m JOIN history h ON m.id = h.song_id ";
+          $conditions = "WHERE h.user_id = ? GROUP BY m.id";
+          $params[] = $user_id;
+          $default_sort = 'history_desc';
           break;
         case 'artist_songs':
           $conditions = "WHERE m.artist = ?";
@@ -1017,16 +1091,21 @@ if (isset($_GET['action'])) {
           $query_param = '%' . $param . '%';
           $params = [$query_param, $query_param, $query_param];
           break;
+        case 'get_recommendations':
+          send_json([]);
         default:
           send_json([]);
       }
       $sort_map = [
         'manual_order' => 'ORDER BY ps.sort_order ASC',
+        'id_desc' => 'ORDER BY m.id DESC',
+        'id_asc' => 'ORDER BY m.id ASC',
         'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
         'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'year_desc' => 'ORDER BY m.year DESC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
         'year_asc' => 'ORDER BY m.year ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+        'history_desc' => 'ORDER BY MAX(h.played_at) DESC',
       ];
       if ($view_type === 'get_favorites') {
         $sort_map['manual_order'] = 'ORDER BY f.sort_order ASC';
@@ -1076,18 +1155,29 @@ if (isset($_GET['action'])) {
 
         if (!$user_details) { http_response_code(404); exit; }
 
-        $stmt_stats = $db->prepare("SELECT COUNT(*) as song_count, SUM(duration) as total_duration, MAX(id) as image_id FROM music WHERE user_id = ?");
+        $stmt_stats = $db->prepare("SELECT COUNT(*) as song_count, SUM(duration) as total_duration FROM music WHERE user_id = ?");
         $stmt_stats->execute([$user_id]);
         $details = $stmt_stats->fetch();
         
         $details['name'] = $user_details['artist'];
-        $details['image_url'] = '?action=get_image&id=' . ($details['image_id'] ?? 0);
+        $details['image_url'] = '?action=get_profile_picture&id=' . $user_id;
         $details['public_id'] = null;
+
+        $sort_map = [
+          'id_desc' => 'ORDER BY m.id DESC',
+          'id_asc' => 'ORDER BY m.id ASC',
+          'artist_asc' => 'ORDER BY m.artist COLLATE NOCASE ASC, m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+          'title_asc' => 'ORDER BY m.title COLLATE NOCASE ASC',
+          'album_asc' => 'ORDER BY m.album COLLATE NOCASE ASC, m.title COLLATE NOCASE ASC',
+          'year_desc' => 'ORDER BY m.year DESC',
+          'year_asc' => 'ORDER BY m.year ASC',
+        ];
+        $order_by = $sort_map[$sort] ?? $sort_map['title_asc'];
 
         $stmt_songs = $db->prepare("
           SELECT m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
           FROM music m LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ?
-          WHERE m.user_id = ? ORDER BY m.title COLLATE NOCASE ASC {$limit_clause}
+          WHERE m.user_id = ? {$order_by} {$limit_clause}
         ");
         $stmt_songs->execute([$user_id, $user_id]);
         $songs = $stmt_songs->fetchAll();
@@ -1144,6 +1234,33 @@ if (isset($_GET['action'])) {
       }
       send_json(['details' => $details, 'songs' => $songs]);
       break;
+
+    case 'get_user_profile':
+        if (!$user_id) { http_response_code(403); exit; }
+        $stmt_user = $db->prepare("SELECT artist FROM users WHERE id = ?");
+        $stmt_user->execute([$user_id]);
+        $profile = $stmt_user->fetch();
+
+        if (!$profile) { http_response_code(404); exit; }
+        
+        $profile['image_url'] = '?action=get_profile_picture&id=' . $user_id . '&v=' . time();
+        send_json($profile);
+        break;
+
+    case 'get_user_stats':
+        if (!$user_id) { http_response_code(403); exit; }
+        $stats = [];
+        $stats_queries = [
+            'uploads' => "SELECT COUNT(*) FROM music WHERE user_id = {$user_id}",
+            'favorites' => "SELECT COUNT(*) FROM favorites WHERE user_id = {$user_id}",
+            'playlists' => "SELECT COUNT(*) FROM playlists WHERE user_id = {$user_id}",
+            'play_count' => "SELECT SUM(play_count) FROM play_counts WHERE user_id = {$user_id}"
+        ];
+        foreach ($stats_queries as $key => $query) {
+            $stats[$key] = $db->query($query)->fetchColumn() ?: 0;
+        }
+        send_json(['stats' => $stats]);
+        break;
 
     case 'search':
       $query = '%' . ($_GET['q'] ?? '') . '%';
@@ -1247,6 +1364,38 @@ if (isset($_GET['action'])) {
       send_json(['status' => 'success', 'message' => 'Playlist created.']);
       break;
 
+    case 'edit_playlist':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $public_id = $data['public_id'];
+      $new_name = trim(htmlspecialchars($data['name'] ?? '', ENT_QUOTES, 'UTF-8'));
+      if (empty($new_name)) {
+        http_response_code(400); send_json(['status' => 'error', 'message' => 'Playlist name cannot be empty.']);
+      }
+      $stmt = $db->prepare("UPDATE playlists SET name = ? WHERE public_id = ? AND user_id = ?");
+      $stmt->execute([$new_name, $public_id, $user_id]);
+      if ($stmt->rowCount() > 0) {
+        send_json(['status' => 'success', 'message' => 'Playlist updated.']);
+      } else {
+        http_response_code(403);
+        send_json(['status' => 'error', 'message' => 'Permission denied or playlist not found.']);
+      }
+      break;
+
+    case 'delete_playlist':
+      if (!$user_id) { http_response_code(403); exit; }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $public_id = $data['public_id'];
+      $stmt = $db->prepare("DELETE FROM playlists WHERE public_id = ? AND user_id = ?");
+      $stmt->execute([$public_id, $user_id]);
+      if ($stmt->rowCount() > 0) {
+        send_json(['status' => 'success', 'message' => 'Playlist deleted.']);
+      } else {
+        http_response_code(403);
+        send_json(['status' => 'error', 'message' => 'Permission denied or playlist not found.']);
+      }
+      break;
+
     case 'add_to_playlist':
       if (!$user_id) { http_response_code(403); exit; }
       $data = json_decode(file_get_contents('php://input'), true);
@@ -1284,7 +1433,9 @@ if (isset($_GET['action'])) {
       $stmt_owner->execute([$public_id, $user_id]);
       $playlist = $stmt_owner->fetch();
       if (!$playlist) {
-        http_response_code(403); send_json(['status' => 'error', 'message' => 'Permission denied.']);
+        http_response_code(403);
+        send_json(['status' => 'error', 'message' => 'Permission denied or playlist not found.']);
+        exit;
       }
 
       $stmt = $db->prepare("DELETE FROM playlist_songs WHERE playlist_id = ? AND song_id = ?");
@@ -1319,148 +1470,192 @@ if (isset($_GET['action'])) {
         send_json(['status' => 'error', 'message' => 'Failed to update order.']);
       }
       break;
+      
+    case 'log_play':
+      if (!$user_id) {
+        // Not logged in, can't log play. Exit silently.
+        // JS already checks for currentUser, so this is a safeguard.
+        exit;
+      }
+      $data = json_decode(file_get_contents('php://input'), true);
+      $song_id = intval($data['id'] ?? 0);
+
+      // Only proceed if we have a valid song ID.
+      if ($song_id > 0) {
+        try {
+          $db->beginTransaction();
+
+          // This logic implements the user's request: "don't duplicate the history... just modify and make the history to the latest".
+          // We remove any old history records for this song by this user, and then insert a fresh one.
+          // This keeps the history table clean and ensures only the last play time is stored.
+          $db->prepare("DELETE FROM history WHERE user_id = ? AND song_id = ?")->execute([$user_id, $song_id]);
+          $db->prepare("INSERT INTO history (user_id, song_id) VALUES (?, ?)")->execute([$user_id, $song_id]);
+
+          // This part handles the aggregate play counts and is separate from the chronological history.
+          $db->prepare("
+            INSERT INTO play_counts (user_id, song_id, play_count, last_played) VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, song_id) DO UPDATE SET
+              play_count = play_count + 1,
+              last_played = CURRENT_TIMESTAMP
+          ")->execute([$user_id, $song_id]);
+          
+          $db->commit();
+        } catch (Exception $e) {
+          if ($db->inTransaction()) {
+            $db->rollBack();
+          }
+          // Log the error for the admin, but don't return an error to the client.
+          // This is a background task, and we don't want to show an error popup to the user if it fails.
+          error_log('PHP Music Player log_play error: ' . $e->getMessage());
+        }
+      }
+      
+      // Always send a success response to prevent the 'fetch' from failing on the client side.
+      send_json(['status' => 'success']);
+      break;
+      
+    case 'get_history':
+      if (!$user_id) { send_json([]); }
+      $stmt = $db->prepare("
+        SELECT MAX(h.played_at) AS played_at, m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id,
+        CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
+        FROM history h
+        JOIN music m ON h.song_id = m.id
+        LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ?
+        WHERE h.user_id = ?
+        GROUP BY m.id
+        ORDER BY played_at DESC
+        {$limit_clause}
+      ");
+      $stmt->execute([$user_id, $user_id]);
+      send_json($stmt->fetchAll());
+      break;
+
+    case 'clear_history':
+      if (!$user_id) { http_response_code(403); exit; }
+      $db->prepare("DELETE FROM history WHERE user_id = ?")->execute([$user_id]);
+      $db->prepare("DELETE FROM play_counts WHERE user_id = ?")->execute([$user_id]);
+      send_json(['status' => 'success', 'message' => 'Playback history cleared.']);
+      break;
+
+    case 'get_recommendations':
+      if (!$user_id) { send_json(['shelves' => []]); }
+      $shelves = [];
+      $song_fields = "m.id, m.title, m.artist, m.album, m.genre, m.duration, m.user_id, CASE WHEN f.song_id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite";
+      $album_fields = "m.album, m.artist, MAX(m.id) as id";
+
+      $recent_songs_stmt = $db->prepare("
+        SELECT {$song_fields}
+        FROM history h JOIN music m ON h.song_id = m.id
+        LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = :user_id
+        WHERE h.user_id = :user_id GROUP BY m.id ORDER BY MAX(h.played_at) DESC LIMIT 10
+      ");
+      $recent_songs_stmt->execute([':user_id' => $user_id]);
+      $recent_songs = $recent_songs_stmt->fetchAll();
+      if (count($recent_songs) > 0) {
+        $shelves[] = ['title' => 'Recently Played', 'type' => 'songs', 'items' => $recent_songs, 'connected_view' => 'get_history'];
+      }
+
+      $top_artists_stmt = $db->prepare("
+        SELECT m.artist FROM play_counts pc JOIN music m ON pc.song_id = m.id
+        WHERE pc.user_id = ? AND m.artist != 'Unknown Artist'
+        GROUP BY m.artist ORDER BY SUM(pc.play_count) DESC LIMIT 1
+      ");
+      $top_artists_stmt->execute([$user_id]);
+      $top_artist = $top_artists_stmt->fetchColumn();
+
+      if ($top_artist) {
+        $more_from_artist_stmt = $db->prepare("
+          SELECT {$album_fields} FROM music m
+          WHERE m.artist = :artist_name AND m.album != 'Unknown Album'
+          AND m.id NOT IN (SELECT song_id FROM history WHERE user_id = :user_id)
+          GROUP BY m.album ORDER BY RANDOM() LIMIT 10
+        ");
+        $more_from_artist_stmt->execute([':user_id' => $user_id, ':artist_name' => $top_artist]);
+        $artist_albums = $more_from_artist_stmt->fetchAll();
+        if (count($artist_albums) > 0) {
+          $shelves[] = ['title' => 'More from ' . $top_artist, 'type' => 'albums', 'items' => $artist_albums, 'connected_view' => 'artist_songs', 'param' => urlencode($top_artist)];
+        }
+      }
+
+      $top_genres_stmt = $db->prepare("
+        SELECT m.genre FROM play_counts pc JOIN music m ON pc.song_id = m.id
+        WHERE pc.user_id = ? AND m.genre != '' AND m.genre IS NOT NULL AND m.genre != 'Unknown Genre'
+        GROUP BY m.genre ORDER BY SUM(pc.play_count) DESC LIMIT 2
+      ");
+      $top_genres_stmt->execute([$user_id]);
+      $top_genres = $top_genres_stmt->fetchAll(PDO::FETCH_COLUMN);
+
+      if (count($top_genres) > 0) {
+        $genre_placeholders = implode(',', array_fill(0, count($top_genres), '?'));
+        $genre_mix_stmt = $db->prepare("
+          SELECT {$song_fields} FROM music m
+          LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = ?
+          WHERE m.genre IN ({$genre_placeholders}) AND m.id NOT IN (SELECT song_id FROM history WHERE user_id = ?)
+          ORDER BY RANDOM() LIMIT 15
+        ");
+        $genre_mix_stmt->execute(array_merge([$user_id], $top_genres, [$user_id]));
+        $genre_songs = $genre_mix_stmt->fetchAll();
+        if (count($genre_songs) > 0) {
+          $shelves[] = ['title' => 'Your Genre Mix', 'type' => 'songs', 'items' => $genre_songs];
+        }
+      }
+      
+      $recent_favorites_stmt = $db->prepare("
+        SELECT {$song_fields} FROM favorites f JOIN music m ON f.song_id = m.id
+        LEFT JOIN favorites f2 ON m.id = f2.song_id AND f2.user_id = :user_id
+        WHERE f.user_id = :user_id
+        ORDER BY f.sort_order DESC LIMIT 10
+      ");
+      $recent_favorites_stmt->execute([':user_id' => $user_id]);
+      $recent_favorites = $recent_favorites_stmt->fetchAll();
+      if (count($recent_favorites) > 0) {
+          $shelves[] = ['title' => 'Your Favorites', 'type' => 'songs', 'items' => $recent_favorites, 'connected_view' => 'get_favorites'];
+      }
+
+      $recent_playlists_stmt = $db->prepare("
+          SELECT p.name, p.public_id, u.artist as creator,
+          (SELECT ps.song_id FROM playlist_songs ps WHERE ps.playlist_id = p.id ORDER BY ps.added_at DESC LIMIT 1) as image_id
+          FROM playlists p JOIN users u ON p.user_id = u.id
+          WHERE p.user_id = :user_id
+          ORDER BY p.created_at DESC LIMIT 5
+      ");
+      $recent_playlists_stmt->execute([':user_id' => $user_id]);
+      $recent_playlists = $recent_playlists_stmt->fetchAll();
+      if (count($recent_playlists) > 0) {
+          $shelves[] = ['title' => 'Your Playlists', 'type' => 'playlists', 'items' => $recent_playlists, 'connected_view' => 'get_user_playlists'];
+      }
+
+      $discovery_songs_stmt = $db->prepare("
+        SELECT {$song_fields} FROM music m
+        LEFT JOIN favorites f ON m.id = f.song_id AND f.user_id = :user_id
+        WHERE m.id NOT IN (SELECT song_id FROM history WHERE user_id = :user_id)
+        ORDER BY RANDOM() LIMIT 15
+      ");
+      $discovery_songs_stmt->execute([':user_id' => $user_id]);
+      $discovery_songs = $discovery_songs_stmt->fetchAll();
+      if (count($discovery_songs) > 0) {
+        $shelves[] = ['title' => 'Discover New Songs', 'type' => 'songs', 'items' => $discovery_songs];
+      }
+      
+      $discovery_stmt = $db->prepare("
+        SELECT {$album_fields} FROM music m
+        WHERE m.id NOT IN (SELECT song_id FROM history WHERE user_id = :user_id) AND m.album != 'Unknown Album'
+        GROUP BY m.album ORDER BY RANDOM() LIMIT 10
+      ");
+      $discovery_stmt->execute([':user_id' => $user_id]);
+      $discovery_albums = $discovery_stmt->fetchAll();
+      if (count($discovery_albums) > 0) {
+        $shelves[] = ['title' => 'Discover New Albums', 'type' => 'albums', 'items' => $discovery_albums];
+      }
+
+      send_json(['shelves' => $shelves]);
+      break;
   }
   exit;
 }
 
-function scan_music_directory($db) {
-  if (!class_exists('getID3')) {
-    session_start();
-    $_SESSION['scan_status'] = 'error';
-    $_SESSION['scan_message'] = 'getID3 library not found.';
-    session_write_close();
-    return;
-  }
-  session_start();
-  $_SESSION['scan_status'] = 'scanning';
-  $_SESSION['scan_message'] = 'Starting scan...';
-  session_write_close();
-
-  $stmt = $db->query("SELECT id FROM users WHERE email = 'musiclibrary@mail.com'");
-  $library_user_id = $stmt->fetchColumn();
-  if (!$library_user_id) {
-    session_start();
-    $_SESSION['scan_status'] = 'error';
-    $_SESSION['scan_message'] = 'Music Library user not found.';
-    session_write_close();
-    return;
-  }
-
-  session_start();
-  $_SESSION['scan_message'] = "Fetching records from database...";
-  session_write_close();
-  $stmt = $db->query("SELECT file, last_modified FROM music WHERE user_id = " . $library_user_id);
-  $db_files = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-
-  session_start();
-  $_SESSION['scan_message'] = "Scanning music directory...";
-  session_write_close();
-  $files_on_disk = [];
-  $uploads_path = realpath(MUSIC_DIR . '/uploads');
-  try {
-    $directory = new RecursiveDirectoryIterator(MUSIC_DIR, RecursiveDirectoryIterator::SKIP_DOTS);
-    $iterator = new RecursiveIteratorIterator($directory, RecursiveIteratorIterator::LEAVES_ONLY);
-    foreach ($iterator as $file) {
-      if ($file->isDir()) {
-        continue;
-      }
-      $filePath = $file->getRealPath();
-      if ($uploads_path && strpos($filePath, $uploads_path) === 0) {
-        continue;
-      }
-      if (preg_match('/\.(mp3|m4a|flac|ogg|wav)$/i', $filePath)) {
-        $files_on_disk[$filePath] = $file->getMTime();
-      }
-    }
-  } catch (Exception $e) {
-      session_start();
-      $_SESSION['scan_status'] = 'error';
-      $_SESSION['scan_message'] = 'Error scanning directory: ' . $e->getMessage();
-      session_write_close();
-      return;
-  }
-
-  $files_to_add = array_diff_key($files_on_disk, $db_files);
-  $files_to_delete = array_diff_key($db_files, $files_on_disk);
-  $files_to_update = [];
-  $potential_updates = array_intersect_key($files_on_disk, $db_files);
-  foreach ($potential_updates as $path => $mtime) {
-    if ($mtime > $db_files[$path]) {
-      $files_to_update[$path] = $mtime;
-    }
-  }
-
-  $files_to_process = $files_to_add + $files_to_update;
-  $total_to_process = count($files_to_process) + count($files_to_delete);
-
-  if ($total_to_process === 0) {
-    session_start();
-    $_SESSION['scan_status'] = 'finished';
-    $_SESSION['scan_message'] = 'Scan complete. No changes detected.';
-    session_write_close();
-    return;
-  }
-
-  $getID3 = new getID3;
-  $insert_stmt = $db->prepare("INSERT INTO music (user_id, file, title, artist, album, genre, year, duration, image, last_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $update_stmt = $db->prepare("UPDATE music SET title=?, artist=?, album=?, genre=?, year=?, duration=?, image=?, last_modified=? WHERE file=?");
-  $delete_stmt = $db->prepare("DELETE FROM music WHERE file = ?");
-  $processed_count = 0;
-
-  try {
-    $db->beginTransaction();
-
-    foreach ($files_to_process as $filePath => $mtime) {
-      $processed_count++;
-      session_start();
-      $_SESSION['scan_message'] = "[$processed_count/$total_to_process] Processing: " . basename($filePath);
-      session_write_close();
-
-      $info = $getID3->analyze($filePath);
-      getid3_lib::CopyTagsToComments($info);
-      $title = trim($info['comments']['title'][0] ?? pathinfo($filePath, PATHINFO_FILENAME));
-      $artist = trim($info['comments']['artist'][0] ?? 'Unknown Artist');
-      $album = trim($info['comments']['album'][0] ?? 'Unknown Album');
-      $genre = trim($info['comments']['genre'][0] ?? 'Unknown Genre');
-      $year = (int)($info['comments']['year'][0] ?? 0);
-      $duration = (int)($info['playtime_seconds'] ?? 0);
-      $raw_image_data = $info['comments']['picture'][0]['data'] ?? null;
-      $webp_image_data = process_image_to_webp($raw_image_data);
-
-      if (isset($files_to_add[$filePath])) {
-        $insert_stmt->execute([$library_user_id, $filePath, $title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime]);
-      } else {
-        $update_stmt->execute([$title, $artist, $album, $genre, $year, $duration, $webp_image_data, $mtime, $filePath]);
-      }
-    }
-
-    foreach (array_keys($files_to_delete) as $filePath) {
-      $processed_count++;
-      session_start();
-      $_SESSION['scan_message'] = "[$processed_count/$total_to_process] Deleting: " . basename($filePath);
-      session_write_close();
-      $delete_stmt->execute([$filePath]);
-    }
-
-    $db->commit();
-  } catch (Exception $e) {
-    if ($db->inTransaction()) {
-      $db->rollBack();
-    }
-    session_start();
-    $_SESSION['scan_status'] = 'error';
-    $_SESSION['scan_message'] = 'Scan failed: ' . $e->getMessage();
-    session_write_close();
-    return;
-  }
-
-  session_start();
-  $_SESSION['scan_status'] = 'finished';
-  $_SESSION['scan_message'] = "Scan complete. Processed $processed_count files.";
-  session_write_close();
-}
-
-function perform_emergency_scan($db) {
+function perform_full_scan($db) {
   ini_set('memory_limit', '512M');
   error_reporting(E_ALL);
   ini_set('display_errors', 1);
@@ -1468,8 +1663,8 @@ function perform_emergency_scan($db) {
   header('Content-Type: text/plain; charset=utf-8');
   ob_implicit_flush();
 
-  echo "PHP Music Library Scanner\n";
-  echo "=========================\n\n";
+  echo "PHP Music Library - Full Scan\n";
+  echo "===================================\n\n";
 
   if (!class_exists('getID3')) {
     die("FATAL ERROR: getID3 library not found in " . __DIR__ . "/getid3/\n");
@@ -1595,7 +1790,6 @@ function perform_emergency_scan($db) {
         const storedVersion = localStorage.getItem('appVersion');
 
         if (storedVersion !== appVersion) {
-          console.log(`Cache version mismatch. Stored: ${storedVersion}, New: ${appVersion}. Clearing cache.`);
           localStorage.clear();
           sessionStorage.clear();
           localStorage.setItem('appVersion', appVersion);
@@ -1659,7 +1853,6 @@ function perform_emergency_scan($db) {
         display: flex;
         flex-direction: column;
         flex-shrink: 0;
-        z-index: 1045;
       }
       .main-content {
         flex-grow: 1;
@@ -1684,12 +1877,14 @@ function perform_emergency_scan($db) {
         min-width: 0;
         flex-grow: 1;
       }
-      .view-details-header img {
+      .view-details-header img,
+      .profile-picture-lg {
         width: 150px;
         height: 150px;
         object-fit: cover;
         border-radius: 6px;
         flex-shrink: 0;
+        background-color: var(--ytm-surface-2);
       }
       .view-details-header-info .type {
         font-size: 0.9rem;
@@ -1758,19 +1953,10 @@ function perform_emergency_scan($db) {
         width: 24px;
         text-align: center;
       }
-      .scan-status {
-        margin-top: auto;
-        padding: 1rem 1.5rem;
-        font-size: 0.8rem;
-        color: var(--ytm-secondary-text);
-      }
-      .scan-status .progress {
-        height: 4px;
-        margin-top: 5px;
-      }
       .offcanvas {
         background-color: var(--ytm-bg);
         color: var(--ytm-primary-text);
+        z-index: 999;
       }
       .offcanvas .offcanvas-header {
         padding: 0.75rem 1.5rem;
@@ -1885,7 +2071,7 @@ function perform_emergency_scan($db) {
         justify-self: end;
         position: relative;
       }
-      .song-item .more-btn {
+      .song-item .more-btn, .playlist-more-btn {
         background: none;
         border: none;
         color: var(--ytm-secondary-text);
@@ -1893,8 +2079,22 @@ function perform_emergency_scan($db) {
         cursor: pointer;
         border-radius: 50%;
       }
-      .song-item:hover .more-btn {
+      .song-item:hover .more-btn, .playlist-more-btn:hover {
         color: var(--ytm-primary-text);
+      }
+      .card.playlist-card {
+        position: relative;
+      }
+      .playlist-more-btn {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        background: transparent !important;
+        border: none;
+        padding: 0.25rem;
+        font-size: 1.25rem;
+        line-height: 1;
+        cursor: pointer;
       }
       .context-menu {
         display: none;
@@ -1936,7 +2136,7 @@ function perform_emergency_scan($db) {
         align-items: center;
         gap: 1.5rem;
         padding: 0 1.5rem;
-        z-index: 1046;
+        z-index: 998;
       }
       .player-bar .track-info {
         display: flex;
@@ -2157,6 +2357,9 @@ function perform_emergency_scan($db) {
       .form-control::placeholder {
         color: var(--ytm-secondary-text);
       }
+      .dropdown-menu-dark {
+        background-color: var(--ytm-surface-2);
+      }
       #upload-progress-area .progress {
         height: 10px;
       }
@@ -2181,6 +2384,98 @@ function perform_emergency_scan($db) {
       }
       .song-item.now-playing .song-title {
         color: var(--ytm-accent);
+      }
+      .profile-picture, .profile-picture-sm {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        object-fit: cover;
+        background-color: var(--ytm-surface-2);
+      }
+      .profile-picture-lg {
+        border-radius: 50%;
+      }
+      .history-item .played-at-text {
+        font-size: 0.8rem;
+        color: var(--ytm-secondary-text);
+      }
+      .recommendation-shelf {
+        margin-bottom: 2rem;
+      }
+      .shelf-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      .shelf-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+      .shelf-items {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(180px, 1fr);
+        overflow-x: auto;
+        gap: 1rem;
+        padding-bottom: 1rem;
+        scrollbar-color: var(--ytm-surface-2) var(--ytm-surface);
+        scrollbar-width: thin;
+      }
+      .shelf-items::-webkit-scrollbar { height: 8px; }
+      .shelf-item {
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+      }
+      .shelf-item img {
+        width: 100%;
+        aspect-ratio: 1/1;
+        object-fit: cover;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+        background-color: var(--ytm-surface-2);
+      }
+      .shelf-item .item-title {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .shelf-item .item-subtitle {
+        font-size: 0.875rem;
+        color: var(--ytm-secondary-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .user-profile-page, .user-stats-page {
+        text-align: center;
+        padding: 2rem;
+      }
+      .user-profile-page .profile-picture-lg {
+        width: 200px;
+        height: 200px;
+        margin-bottom: 1.5rem;
+      }
+      .user-profile-page .display-name {
+        font-size: 2.5rem;
+        font-weight: 700;
+      }
+      .user-stats-page .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 2rem;
+        margin-top: 2rem;
+      }
+      .user-stats-page .stat-item .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+      }
+      .user-stats-page .stat-item .stat-label {
+        color: var(--ytm-secondary-text);
+        text-transform: uppercase;
+        font-size: 0.9rem;
       }
       @keyframes soundwave-pulse {
         0% { transform: scaleY(0.4); }
@@ -2438,67 +2733,60 @@ function perform_emergency_scan($db) {
             <span>Genres</span>
           </a>
 
-          <a href="#" class="nav-link logged-in-only" data-view="get_profile_songs">
-            <i class="bi bi-person-circle"></i>
-            <span>My Music</span>
-          </a>
-          <a href="#" class="nav-link logged-in-only" data-view="get_favorites">
-            <i class="bi bi-heart-fill"></i>
-            <span>Favorites</span>
-          </a>
-          <a href="#" class="nav-link logged-in-only" data-view="get_user_playlists">
-            <i class="bi bi-music-note-beamed"></i>
-            <span>Playlists</span>
-          </a>
-          
           <hr class="text-secondary">
           
-          <a href="#" class="nav-link logged-out-only" data-bs-toggle="modal" data-bs-target="#login-modal">
-            <i class="bi bi-box-arrow-in-right"></i>
-            <span>Login</span>
-          </a>
-          <a href="#" class="nav-link logged-out-only" data-bs-toggle="modal" data-bs-target="#register-modal">
-            <i class="bi bi-person-plus-fill"></i>
-            <span>Register</span>
-          </a>
+          <div class="logged-in-only">
+            <a href="#" class="nav-link" data-view="get_recommendations">
+              <i class="bi bi-magic"></i>
+              <span>For You</span>
+            </a>
+            <a href="#" class="nav-link" data-view="user_profile">
+              <i class="bi bi-person-fill"></i>
+              <span>My Profile</span>
+            </a>
+            <a href="#" class="nav-link" data-view="get_history">
+              <i class="bi bi-clock-history"></i>
+              <span>History</span>
+            </a>
+            <a href="#" class="nav-link" data-view="get_favorites">
+              <i class="bi bi-heart-fill"></i>
+              <span>Favorites</span>
+            </a>
+            <a href="#" class="nav-link" data-view="get_user_playlists">
+              <i class="bi bi-music-note-beamed"></i>
+              <span>Playlists</span>
+            </a>
+          </div>
           
-          <a href="#" class="nav-link logged-in-only verified-user-only" data-bs-toggle="modal" data-bs-target="#upload-modal">
-            <i class="bi bi-cloud-upload-fill"></i>
-            <span>Upload Song</span>
-          </a>
-          <a href="#" class="nav-link" id="scan-btn">
-            <i class="bi bi-arrow-repeat"></i>
-            <span>Scan Library</span>
-          </a>
-          <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#emergency-scan-modal">
-            <i class="bi bi-exclamation-triangle-fill"></i>
-            <span>Emergency Scan</span>
-          </a>
-          <a href="#" class="nav-link logged-in-only" data-bs-toggle="modal" data-bs-target="#settings-modal">
-            <i class="bi bi-gear-fill"></i>
-            <span>Settings</span>
-          </a>
-          <a href="#" class="nav-link logged-in-only" id="logout-btn">
-            <i class="bi bi-box-arrow-left"></i>
-            <span>Logout</span>
-          </a>
-
-          <hr class="text-secondary">
-
-          <a href="#" class="nav-link d-none" id="install-pwa-btn">
-            <i class="bi bi-cloud-arrow-down-fill"></i>
-            <span>Install App</span>
-          </a>
-          <a href="#" class="nav-link" id="clear-cache-btn">
-            <i class="bi bi-eraser-fill"></i>
-            <span>Clear Cache</span>
-          </a>
-
-          <div class="scan-status">
-            <p id="scan-status-text" class="badge bg-primary fw-bold">Ready.</p>
-            <div class="progress d-none" id="scan-progress-bar-container">
-              <div class="progress-bar progress-bar-striped progress-bar-animated bg-danger" id="scan-progress-bar" role="progressbar" style="width: 100%"></div>
-            </div>
+          <div class="logged-out-only">
+            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#login-modal">
+              <i class="bi bi-box-arrow-in-right"></i>
+              <span>Login</span>
+            </a>
+            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#register-modal">
+              <i class="bi bi-person-plus-fill"></i>
+              <span>Register</span>
+            </a>
+          </div>
+          
+          <div class="mt-auto">
+            <hr class="text-secondary">
+            <a href="#" class="nav-link logged-in-only verified-user-only" data-bs-toggle="modal" data-bs-target="#upload-modal">
+              <i class="bi bi-cloud-upload-fill"></i>
+              <span>Upload Song</span>
+            </a>
+            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#full-scan-modal">
+              <i class="bi bi-hdd-stack-fill"></i>
+              <span>Scan All</span>
+            </a>
+            <a href="#" class="nav-link d-none" id="install-pwa-btn">
+              <i class="bi bi-cloud-arrow-down-fill"></i>
+              <span>Install App</span>
+            </a>
+            <a href="#" class="nav-link" id="clear-cache-btn">
+              <i class="bi bi-eraser-fill"></i>
+              <span>Clear Cache</span>
+            </a>
           </div>
         </div>
       </nav>
@@ -2511,17 +2799,42 @@ function perform_emergency_scan($db) {
             <input type="text" class="form-control" id="search-input-mobile" placeholder="Search your music" aria-label="Search your music">
             <button class="btn" type="button" id="search-btn-mobile"><i class="bi bi-search"></i></button>
           </div>
+          <div class="dropdown logged-in-only">
+            <img src="" class="profile-picture" id="profile-picture-header-mobile" alt="Profile" data-bs-toggle="dropdown" aria-expanded="false" style="cursor: pointer;">
+            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+              <li><a class="dropdown-item" href="#" id="profile-dropdown-profile-mobile"><i class="bi bi-person-fill me-2"></i>My Profile</a></li>
+              <li><a class="dropdown-item" href="#" id="profile-dropdown-stats-mobile"><i class="bi bi-bar-chart-line-fill me-2"></i>Statistics</a></li>
+              <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#settings-modal"><i class="bi bi-gear-fill me-2"></i>Settings</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#" id="profile-dropdown-logout-mobile"><i class="bi bi-box-arrow-left me-2"></i>Logout</a></li>
+            </ul>
+          </div>
         </div>
         <div class="page-header">
           <h1 id="content-title" class="content-title">Home</h1>
           <div class="header-controls">
+            <div id="sort-controls" class="d-none">
+              <label for="sort-select" class="text-secondary small">Sort by</label>
+              <select id="sort-select" class="form-select form-select-sm" style="width: auto;"></select>
+            </div>
+            <div id="history-controls" class="d-none">
+                <button class="btn btn-sm btn-outline-danger" id="clear-history-btn">
+                    <i class="bi bi-trash"></i> Clear History
+                </button>
+            </div>
             <div class="input-group search-bar d-none d-md-flex">
               <input type="text" class="form-control" id="search-input-desktop" placeholder="Search songs, albums, artists" aria-label="Search songs, albums, artists">
               <button class="btn" type="button" id="search-btn-desktop"><i class="bi bi-search"></i></button>
             </div>
-            <div id="sort-controls" class="d-none">
-              <label for="sort-select" class="text-secondary small">Sort by</label>
-              <select id="sort-select" class="form-select form-select-sm" style="width: auto;"></select>
+            <div class="dropdown logged-in-only d-none d-md-block">
+              <img src="" class="profile-picture" id="profile-picture-header-desktop" alt="Profile" data-bs-toggle="dropdown" aria-expanded="false" style="cursor: pointer;">
+              <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                <li><a class="dropdown-item" href="#" id="profile-dropdown-profile-desktop"><i class="bi bi-person-fill me-2"></i>My Profile</a></li>
+                <li><a class="dropdown-item" href="#" id="profile-dropdown-stats-desktop"><i class="bi bi-bar-chart-line-fill me-2"></i>Statistics</a></li>
+                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#settings-modal"><i class="bi bi-gear-fill me-2"></i>Settings</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" id="profile-dropdown-logout-desktop"><i class="bi bi-box-arrow-left me-2"></i>Logout</a></li>
+              </ul>
             </div>
           </div>
         </div>
@@ -2684,7 +2997,17 @@ function perform_emergency_scan($db) {
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            <h6>Change Password</h6>
+            <h6>Profile Picture</h6>
+            <form id="profile-picture-form" class="mb-4 text-center">
+                <img src="" id="profile-picture-preview" class="profile-picture-lg mb-3" alt="Profile Picture Preview">
+                <div class="mb-3">
+                    <label for="profile-picture-input" class="form-label">Upload new picture</label>
+                    <input class="form-control" type="file" id="profile-picture-input" accept="image/png, image/jpeg, image/gif">
+                </div>
+                <button type="submit" class="btn btn-danger">Save Picture</button>
+            </form>
+            <hr class="text-secondary">
+            <h6 class="mt-4">Change Password</h6>
             <form id="change-password-form">
               <div class="mb-3">
                 <label for="new-password" class="form-label">New Password</label>
@@ -2754,6 +3077,26 @@ function perform_emergency_scan($db) {
         </div>
       </div>
     </div>
+    <div class="modal fade" id="edit-playlist-modal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header border-0">
+            <h5 class="modal-title">Edit Playlist</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="edit-playlist-form">
+              <input type="hidden" id="edit-playlist-id-input">
+              <div class="mb-3">
+                <label for="edit-playlist-name-input" class="form-label">Playlist Name</label>
+                <input type="text" class="form-control" id="edit-playlist-name-input" required>
+              </div>
+              <button type="submit" class="btn btn-danger w-100">Save Changes</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="modal fade" id="add-to-playlist-modal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
@@ -2802,15 +3145,15 @@ function perform_emergency_scan($db) {
         </div>
       </div>
     </div>
-    <div class="modal fade" id="emergency-scan-modal" tabindex="-1">
+    <div class="modal fade" id="full-scan-modal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header border-0">
-            <h5 class="modal-title">Emergency Scan Log</h5>
+            <h5 class="modal-title">Full Library Scan Log</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body p-0">
-            <iframe id="emergency-scan-iframe" src="about:blank" style="width: 100%; height: 60vh; border: none; background-color: #030303;"></iframe>
+            <iframe id="full-scan-iframe" src="about:blank" style="width: 100%; height: 60vh; border: none; background-color: #030303;"></iframe>
           </div>
         </div>
       </div>
@@ -2830,20 +3173,24 @@ function perform_emergency_scan($db) {
         const searchBtnMobile = document.getElementById('search-btn-mobile');
         const sortControls = document.getElementById('sort-controls');
         const sortSelect = document.getElementById('sort-select');
+        const historyControls = document.getElementById('history-controls');
+        const clearHistoryBtn = document.getElementById('clear-history-btn');
         const allNavLinks = document.querySelectorAll('.sidebar .nav-link');
-        const scanBtn = document.getElementById('scan-btn');
-        const scanStatusText = document.getElementById('scan-status-text');
-        const scanProgressBar = document.getElementById('scan-progress-bar-container');
         const contextMenu = document.getElementById('context-menu');
         const playerBar = document.getElementById('player-bar');
         const infiniteScrollLoader = document.getElementById('infinite-scroll-loader');
         const installPwaBtn = document.getElementById('install-pwa-btn');
         const clearCacheBtn = document.getElementById('clear-cache-btn');
+        const fullScanModalEl = document.getElementById('full-scan-modal');
+        const fullScanIframe = document.getElementById('full-scan-iframe');
+
         const genresModalEl = document.getElementById('genres-modal');
         const genresModal = genresModalEl ? new bootstrap.Modal(genresModalEl) : null;
         const genresModalBody = document.getElementById('genres-modal-body');
         const createPlaylistModalEl = document.getElementById('create-playlist-modal');
         const createPlaylistModal = createPlaylistModalEl ? new bootstrap.Modal(createPlaylistModalEl) : null;
+        const editPlaylistModalEl = document.getElementById('edit-playlist-modal');
+        const editPlaylistModal = editPlaylistModalEl ? new bootstrap.Modal(editPlaylistModalEl) : null;
         const addToPlaylistModalEl = document.getElementById('add-to-playlist-modal');
         const addToPlaylistModal = addToPlaylistModalEl ? new bootstrap.Modal(addToPlaylistModalEl) : null;
         const addToPlaylistModalBody = document.getElementById('add-to-playlist-modal-body');
@@ -2856,12 +3203,14 @@ function perform_emergency_scan($db) {
         const shareModalText = document.getElementById('share-modal-text');
         const shareUrlInput = document.getElementById('share-url-input');
         const copyShareUrlBtn = document.getElementById('copy-share-url-btn');
-        const emergencyScanModalEl = document.getElementById('emergency-scan-modal');
-        const emergencyScanIframe = document.getElementById('emergency-scan-iframe');
 
         const playerTrackInfoMobile = document.querySelector('.player-bar .track-info.d-md-none');
         const playerModalEl = document.getElementById('player-modal');
         const playerModal = playerModalEl ? new bootstrap.Modal(playerModalEl) : null;
+        
+        const profilePictureHeaderDesktop = document.getElementById('profile-picture-header-desktop');
+        const profilePictureHeaderMobile = document.getElementById('profile-picture-header-mobile');
+        const profilePicturePreview = document.getElementById('profile-picture-preview');
 
         const playerElements = {
           art: [document.getElementById('player-art-desktop'), document.getElementById('player-art-mobile'), document.getElementById('player-modal-art')],
@@ -2891,17 +3240,17 @@ function perform_emergency_scan($db) {
         let isPlaying = false;
         let isShuffle = false;
         let repeatMode = 'none';
-        let scanInterval;
         let deferredInstallPrompt = null;
         let sortable = null;
         let songIdForPlaylist = null;
+        let contextMenuItemEl = null;
         let previousVolume = 1;
-        let contextMenuSongId = null;
         
         const PAGE_SIZE = 25;
         let currentPage = 1;
         let isLoadingMore = false;
         let allContentloaded = false;
+        const PLAY_LOG_THRESHOLD = 30;
 
         const ICONS = {
           play: `<i class="bi bi-play-fill"></i>`,
@@ -2924,6 +3273,21 @@ function perform_emergency_scan($db) {
           const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
           return `${min}:${sec}`;
         };
+        
+        const timeAgo = (date) => {
+          const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+          let interval = seconds / 31536000;
+          if (interval > 1) return Math.floor(interval) + " years ago";
+          interval = seconds / 2592000;
+          if (interval > 1) return Math.floor(interval) + " months ago";
+          interval = seconds / 86400;
+          if (interval > 1) return Math.floor(interval) + " days ago";
+          interval = seconds / 3600;
+          if (interval > 1) return Math.floor(interval) + " hours ago";
+          interval = seconds / 60;
+          if (interval > 1) return Math.floor(interval) + " minutes ago";
+          return "Just now";
+        }
 
         const fetchData = async (url, options = {}) => {
           try {
@@ -3004,13 +3368,13 @@ function perform_emergency_scan($db) {
           if (type === 'playlist') {
             typeText = `Playlist by ${details.creator}`;
           } else if (type === 'profile') {
-            typeText = 'Profile';
+            typeText = 'My Profile';
             shareButtonHTML = '';
           }
 
           const headerHTML = `
             <div class="view-details-header">
-              <img src="${details.image_url}" alt="${details.name}">
+              <img src="${details.image_url}" alt="${details.name}" class="${type === 'profile' ? 'profile-picture-lg' : ''}">
               <div class="view-details-header-info">
                 <div class="type">${typeText}</div>
                 <h2 class="name text-truncate text-truncate-width">${details.name}</h2>
@@ -3043,8 +3407,9 @@ function perform_emergency_scan($db) {
           if (!songList) {
             songList = document.createElement('div');
             songList.className = 'song-list';
-            const header = `<div class="song-list-header d-none d-md-grid">
-              <div>#</div><div>Title</div><div>Artist</div><div>Album</div><div>Time</div><div></div>
+            const isHistory = currentView.type === 'get_history';
+            const header = `<div class="song-list-header d-none d-md-grid" style="grid-template-columns: 40px minmax(0, 4fr) minmax(0, 3fr) minmax(0, 3fr) ${isHistory ? 'minmax(0, 2fr)' : ''} 80px 40px;">
+              <div>#</div><div>Title</div><div>Artist</div><div>Album</div>${isHistory ? '<div>Played</div>' : ''}<div>Time</div><div></div>
             </div>`;
             contentArea.insertAdjacentHTML('beforeend', header);
             contentArea.appendChild(songList);
@@ -3054,8 +3419,10 @@ function perform_emergency_scan($db) {
 
           const songsHTML = songs.map((song) => {
             const isNowPlaying = currentSong && currentSong.id === song.id;
+            const isHistory = currentView.type === 'get_history';
+            const playedAtHTML = isHistory ? `<div class="played-at-text">${timeAgo(song.played_at)}</div>` : '';
             return `
-            <div class="song-item ${isNowPlaying ? 'now-playing' : ''}" 
+            <div class="song-item ${isNowPlaying ? 'now-playing' : ''} ${isHistory ? 'history-item' : ''}" 
               data-song-id="${song.id}" 
               data-is-favorite="${song.is_favorite == 1 ? '1' : '0'}"
               data-song-title="${escapeAttr(song.title)}"
@@ -3069,6 +3436,7 @@ function perform_emergency_scan($db) {
               <div class="song-title-wrapper"><div class="song-title">${song.title}</div></div>
               <div class="song-artist" data-artist="${encodeURIComponent(song.artist)}">${song.artist}</div>
               <div class="song-album" data-album="${encodeURIComponent(song.album)}">${song.album}</div>
+              ${isHistory ? `<div class="d-none d-md-block">${playedAtHTML}</div>` : ''}
               <div class="song-duration d-none d-md-block">${formatTime(song.duration)}</div>
               <div class="song-more">
                 <button class="more-btn" data-song-id="${song.id}">
@@ -3077,6 +3445,7 @@ function perform_emergency_scan($db) {
               </div>
               <div class="song-artist-mobile d-md-none">
                 <span class="song-artist-name">${song.artist}</span>
+                ${isHistory ? playedAtHTML : ''}
                 <span class="song-duration-mobile">${formatTime(song.duration)}</span>
               </div>
             </div>
@@ -3143,30 +3512,39 @@ function perform_emergency_scan($db) {
           }
           
           const itemsHTML = items.map(item => {
-              let name, subtext, imageId, dataType, dataValue, icon;
+              let name, subtext, imageId, dataType, dataValue, icon, publicId;
               if (type === 'get_albums') {
                 name = item.album;
                 subtext = item.artist;
                 imageId = item.id;
                 dataType = 'album';
                 dataValue = name;
+                publicId = '';
               } else if (type === 'get_user_playlists') {
                 name = item.name;
                 subtext = `${item.song_count} songs`;
                 imageId = item.image_id;
                 dataType = 'playlist';
                 dataValue = item.public_id;
+                publicId = item.public_id;
               } else {
                 name = item;
                 subtext = null;
                 dataType = type.replace('get_','').slice(0, -1);
                 dataValue = name;
                 icon = (type === 'get_artists') ? 'bi-person-fill' : 'bi-tag-fill';
+                publicId = '';
               }
               
+              const moreButton = (type === 'get_user_playlists') ? `
+                <button class="playlist-more-btn" data-public-id="${publicId}" data-name="${name}">
+                  <i class="bi bi-three-dots-vertical"></i>
+                </button>` : '';
+
               if (type === 'get_albums' || type === 'get_user_playlists') {
                 return `<div class="col">
-                  <div class="card h-100 bg-transparent text-white border-0" data-${dataType}="${encodeURIComponent(dataValue)}" style="cursor: pointer;">
+                  <div class="card h-100 bg-transparent text-white border-0 playlist-card" data-${dataType}="${encodeURIComponent(dataValue)}" style="cursor: pointer;">
+                    ${moreButton}
                     <img src="?action=get_image&id=${imageId || 0}" class="card-img-top rounded" alt="${name}" style="aspect-ratio: 1/1; object-fit: cover; background-color: var(--ytm-surface-2);">
                     <div class="card-body px-0 py-2">
                       <h5 class="card-title fs-6 fw-normal text-truncate">${name}</h5>
@@ -3191,13 +3569,95 @@ function perform_emergency_scan($db) {
           grid.insertAdjacentHTML('beforeend', itemsHTML);
         };
         
+        const renderRecommendations = (data) => {
+            contentArea.innerHTML = '';
+            if (!data.shelves || data.shelves.length === 0) {
+                contentArea.innerHTML = `<div class="text-center p-5 text-secondary">Not enough listening history to generate recommendations. Keep listening!</div>`;
+                return;
+            }
+
+            data.shelves.forEach(shelf => {
+                let itemsHTML = '';
+                if (shelf.type === 'songs') {
+                    itemsHTML = shelf.items.map(song => `
+                        <div class="shelf-item" data-song-id="${song.id}">
+                            <img src="?action=get_image&id=${song.id}" alt="${song.title}">
+                            <div class="item-title">${song.title}</div>
+                            <div class="item-subtitle">${song.artist}</div>
+                        </div>
+                    `).join('');
+                } else if (shelf.type === 'albums') {
+                    itemsHTML = shelf.items.map(album => `
+                        <div class="shelf-item" data-album="${encodeURIComponent(album.album)}">
+                            <img src="?action=get_image&id=${album.id || 0}" alt="${album.album}">
+                            <div class="item-title">${album.album}</div>
+                            <div class="item-subtitle">${album.artist}</div>
+                        </div>
+                    `).join('');
+                } else if (shelf.type === 'playlists') {
+                    itemsHTML = shelf.items.map(playlist => `
+                        <div class="shelf-item" data-playlist="${encodeURIComponent(playlist.public_id)}">
+                            <img src="?action=get_image&id=${playlist.image_id || 0}" alt="${playlist.name}">
+                            <div class="item-title">${playlist.name}</div>
+                            <div class="item-subtitle">by ${playlist.creator}</div>
+                        </div>
+                    `).join('');
+                }
+
+
+                const shelfHTML = `
+                    <div class="recommendation-shelf">
+                        <div class="shelf-header">
+                            <h3 class="shelf-title">${shelf.title}</h3>
+                            ${shelf.connected_view ? `<button class="btn btn-sm btn-outline-light border-0" data-view="${shelf.connected_view}" ${shelf.param ? `data-view-param="${shelf.param}"` : ''}>See All</button>` : ''}
+                        </div>
+                        <div class="shelf-items">
+                            ${itemsHTML}
+                        </div>
+                    </div>
+                `;
+                contentArea.insertAdjacentHTML('beforeend', shelfHTML);
+            });
+        };
+        
+        const renderUserStats = (data) => {
+            contentArea.innerHTML = `
+                <div class="user-stats-page">
+                    <h2 class="content-title">My Statistics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value">${data.stats.uploads}</div>
+                            <div class="stat-label">Uploads</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${data.stats.favorites}</div>
+                            <div class="stat-label">Favorites</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${data.stats.playlists}</div>
+                            <div class="stat-label">Playlists</div>
+                         </div>
+                         <div class="stat-item">
+                            <div class="stat-value">${data.stats.play_count}</div>
+                            <div class="stat-label">Total Plays</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+        
         const setupSortOptions = (viewType) => {
-          sortControls.classList.add('d-none');
-          if (['get_songs', 'get_favorites', 'artist_songs', 'album_songs', 'genre_songs', 'get_profile_songs', 'search', 'playlist_songs'].includes(viewType)) {
+          const isSortable = ['get_songs', 'get_favorites', 'artist_songs', 'album_songs', 'genre_songs', 'user_profile', 'search', 'playlist_songs', 'get_history'].includes(viewType);
+          
+          if (isSortable) {
             let options = {
               'artist_asc': 'Artist', 'title_asc': 'Title', 'album_asc': 'Album',
               'year_desc': 'Year (Newest)', 'year_asc': 'Year (Oldest)',
             };
+            
+            if (viewType === 'user_profile') {
+              options = { 'id_desc': 'Newest', 'id_asc': 'Oldest', ...options };
+            }
             if (viewType === 'get_favorites' || viewType === 'playlist_songs') {
               options = { 'manual_order': 'My Order', ...options };
             }
@@ -3206,10 +3666,22 @@ function perform_emergency_scan($db) {
               delete options.artist_asc;
               delete options.album_asc;
             }
+            if (viewType === 'get_history') {
+              options = { 'history_desc': 'Recently Played', 'title_asc': 'Title', 'artist_asc': 'Artist' };
+            }
+
 
             sortSelect.innerHTML = Object.entries(options)
               .map(([value, text]) => `<option value="${value}" ${currentView.sort === value ? 'selected' : ''}>${text}</option>`).join('');
             sortControls.classList.remove('d-none');
+          } else {
+            sortControls.classList.add('d-none');
+          }
+
+          if (viewType === 'get_history') {
+            historyControls.classList.remove('d-none');
+          } else {
+            historyControls.classList.add('d-none');
           }
         };
 
@@ -3226,10 +3698,17 @@ function perform_emergency_scan($db) {
 
           switch(type) {
             case 'get_songs':
-            case 'get_profile_songs':
             case 'get_favorites':
+            case 'get_history':
               data = await fetchData(`?action=${type}&${params.toString()}`);
               renderSongs(data, true);
+              break;
+            case 'user_profile':
+              const profileData = await fetchData(`?action=get_view_data&type=profile&sort=${sort}&page=${currentPage}`);
+              if (profileData && profileData.songs) {
+                renderSongs(profileData.songs, true);
+                data = profileData.songs;
+              }
               break;
             case 'search':
               params.delete('sort');
@@ -3282,26 +3761,42 @@ function perform_emergency_scan($db) {
               data = await fetchData(`?action=get_songs&${params.toString()}`);
               renderSongs(data, false);
               break;
-            case 'get_profile_songs':
+            case 'user_profile':
               updateContentTitle('', false);
-              const profileData = await fetchData(`?action=get_view_data&type=profile&sort=${currentView.sort}&page=1`);
+              const viewData = await fetchData(`?action=get_view_data&type=profile&sort=${currentView.sort}&page=1`);
               contentArea.innerHTML = '';
-              if (profileData && profileData.details) {
-                renderViewDetailsHeader(profileData.details, 'profile');
-                renderSongs(profileData.songs, false);
-                data = profileData.songs;
-              } else if (currentUser) {
-                renderViewDetailsHeader({ name: currentUser.artist, song_count: 0, total_duration: 0, image_url: '?action=get_image&id=0'}, 'profile');
-                renderSongs([], false);
+              if (viewData && viewData.details) {
+                renderViewDetailsHeader(viewData.details, 'profile');
+                renderSongs(viewData.songs, false);
+                data = viewData.songs;
               } else {
-                contentArea.innerHTML = `<div class="text-center p-5 text-secondary">Log in to see your music.</div>`;
+                contentArea.innerHTML = `<div class="text-center p-5 text-secondary">Log in to see your profile.</div>`;
               }
               break;
+            case 'get_user_stats':
+                updateContentTitle('', false);
+                const userStatsData = await fetchData(`?action=get_user_stats`);
+                if(userStatsData) {
+                    renderUserStats(userStatsData);
+                }
+                allContentloaded = true;
+                break;
             case 'get_favorites':
               updateContentTitle('Favorites');
               data = await fetchData(`?action=get_favorites&${params.toString()}`);
               renderSongs(data, false);
               break;
+            case 'get_history':
+                updateContentTitle('History');
+                data = await fetchData(`?action=get_history&${params.toString()}`);
+                renderSongs(data, false);
+                break;
+            case 'get_recommendations':
+                updateContentTitle('For You');
+                data = await fetchData(`?action=get_recommendations`);
+                renderRecommendations(data);
+                allContentloaded = true;
+                break;
             case 'get_albums':
             case 'get_artists':
             case 'get_genres':
@@ -3322,13 +3817,13 @@ function perform_emergency_scan($db) {
               const name_param = currentView.param;
               updateContentTitle('', false);
 
-              const viewData = await fetchData(`?action=get_view_data&type=${type}&name=${name_param}&sort=${currentView.sort}&page=1`);
+              const typeViewData = await fetchData(`?action=get_view_data&type=${type}&name=${name_param}&sort=${currentView.sort}&page=1`);
               
               contentArea.innerHTML = '';
-              if (viewData && viewData.details) {
-                renderViewDetailsHeader(viewData.details, type);
-                renderSongs(viewData.songs, false);
-                data = viewData.songs;
+              if (typeViewData && typeViewData.details) {
+                renderViewDetailsHeader(typeViewData.details, type);
+                renderSongs(typeViewData.songs, false);
+                data = typeViewData.songs;
               } else {
                 contentArea.innerHTML = `<div class="text-center p-5 text-secondary">Error loading view.</div>`;
               }
@@ -3362,10 +3857,31 @@ function perform_emergency_scan($db) {
           hideLoader();
         };
 
+        const logPlay = (songId) => {
+          if (!currentUser) {
+            return;
+          }
+          
+          // Use fetch with the 'keepalive' flag. This is the modern, robust way
+          // to ensure a request is sent, even if the page is being unloaded.
+          // It provides the reliability of sendBeacon with the flexibility of fetch.
+          fetch('?action=log_play', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: songId }),
+            keepalive: true,
+          }).catch(error => {
+            console.error('Network error during log_play:', error);
+          });
+        };
+
         const playSongById = async (songId) => {
           const data = await fetchData(`?action=get_song_data&id=${songId}`);
           if (!data) return;
           currentSong = data;
+          currentSong.logged = false;
           audio.src = currentSong.stream_url;
           audio.play().catch(e => console.error("Audio play failed:", e));
           isPlaying = true;
@@ -3498,7 +4014,7 @@ function perform_emergency_scan($db) {
               });
             }
         
-            const contextMenuItem = contextMenu.querySelector(`.context-menu-item[data-action="toggle_favorite"][data-id="${songId}"]`);
+            const contextMenuItem = contextMenu.querySelector('.context-menu-item[data-action="toggle_favorite"]');
             if (contextMenuItem) {
               const isFav = result.is_favorite;
               const favText = isFav ? "Remove from Favorites" : "Add to Favorites";
@@ -3544,18 +4060,47 @@ function perform_emergency_scan($db) {
 
           if (shareModal) shareModal.show();
         };
+        
+        const positionContextMenu = (buttonEl) => {
+          const buttonRect = buttonEl.getBoundingClientRect();
+          const menuWidth = contextMenu.offsetWidth;
+          const menuHeight = contextMenu.offsetHeight;
+          const margin = 5;
+          
+          let x = buttonRect.right - menuWidth;
+          let y = buttonRect.bottom + margin;
 
-        const buildAndShowContextMenu = (buttonEl, songData) => {
-          if (contextMenu.style.display === 'block' && songData && contextMenuSongId === songData.id) {
+          if (x < margin) x = margin;
+          if (y + menuHeight > window.innerHeight) y = buttonRect.top - menuHeight - margin;
+          if (y < margin) y = margin; 
+
+          contextMenu.style.left = `${x}px`;
+          contextMenu.style.top = `${y}px`;
+        }
+        
+        const buildAndShowPlaylistContextMenu = (buttonEl, playlistData) => {
+          if (contextMenu.style.display === 'block' && contextMenuItemEl === buttonEl) {
             contextMenu.style.display = 'none';
-            contextMenuSongId = null;
             return;
           }
-          if (!songData) {
+          contextMenuItemEl = buttonEl;
+          const { publicId, name } = playlistData;
+          let menuItems = `
+            <li class="context-menu-item" data-action="edit_playlist" data-public-id="${publicId}" data-name="${name}"><i class="bi bi-pencil-fill"></i> Edit Playlist</li>
+            <li class="context-menu-item text-danger" data-action="delete_playlist" data-public-id="${publicId}" data-name="${name}"><i class="bi bi-trash-fill"></i> Delete Playlist</li>
+            <hr class="dropdown-divider bg-secondary mx-2 my-1">
+            <li class="context-menu-item" data-action="close_menu"><i class="bi bi-x-lg"></i> Close Menu</li>`;
+          contextMenu.innerHTML = menuItems;
+          contextMenu.style.display = 'block';
+          positionContextMenu(buttonEl);
+        };
+        
+        const buildAndShowSongContextMenu = (buttonEl, songData) => {
+          if (contextMenu.style.display === 'block' && contextMenuItemEl === buttonEl) {
             contextMenu.style.display = 'none';
-            contextMenuSongId = null;
             return;
           }
+          contextMenuItemEl = buttonEl;
           const { id: songId, title, artist, album, user_id: songUserId, is_favorite } = songData;
           
           let menuItems = `
@@ -3587,36 +4132,13 @@ function perform_emergency_scan($db) {
 
           contextMenu.innerHTML = menuItems;
           contextMenu.style.display = 'block';
-          contextMenuSongId = songId;
-
-          const buttonRect = buttonEl.getBoundingClientRect();
-          const menuWidth = contextMenu.offsetWidth;
-          const menuHeight = contextMenu.offsetHeight;
-          const margin = 5;
-          
-          let x = buttonRect.right - menuWidth;
-          let y = buttonRect.bottom + margin;
-
-          if (x < margin) {
-            x = margin;
-          }
-          
-          if (y + menuHeight > window.innerHeight) {
-            y = buttonRect.top - menuHeight - margin;
-          }
-          
-          if (y < margin) {
-             y = margin; 
-          }
-
-          contextMenu.style.left = `${x}px`;
-          contextMenu.style.top = `${y}px`;
+          positionContextMenu(buttonEl);
         };
 
         const showPlayerContextMenu = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          buildAndShowContextMenu(e.currentTarget, currentSong);
+          buildAndShowSongContextMenu(e.currentTarget, currentSong);
         };
         
         const showSongItemContextMenu = (buttonEl) => {
@@ -3632,7 +4154,7 @@ function perform_emergency_scan($db) {
             user_id: parseInt(songItem.dataset.songUserId)
           };
           
-          buildAndShowContextMenu(buttonEl, songData);
+          buildAndShowSongContextMenu(buttonEl, songData);
         };
         
         const togglePlayPause = () => {
@@ -3691,31 +4213,49 @@ function perform_emergency_scan($db) {
           showToast(isShuffle ? 'Shuffle enabled' : 'Shuffle disabled', 'info');
         };
 
-        const setQueueAndPlay = async (startId) => {
-          const allIds = await fetchData('?action=get_view_ids', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              view_type: currentView.type,
-              param: currentView.param,
-              sort: currentView.sort,
-            })
-          });
-
-          if (!allIds || allIds.length === 0) { return; }
-
-          originalQueue = allIds;
-          queue = [...originalQueue];
-          if (isShuffle) { 
-             isShuffle = false; toggleShuffle();
-          }
-          queueIndex = queue.findIndex(id => id === startId);
-          if (queueIndex === -1) { return; }
-          playSongById(startId);
+        const setQueueAndPlay = async (startId, view) => {
+            const contextView = view || currentView;
+            if (contextView.type === 'get_recommendations') {
+                const allShelfSongs = [...document.querySelectorAll('.shelf-item[data-song-id]')];
+                const allSongIds = allShelfSongs.map(item => parseInt(item.dataset.songId));
+                originalQueue = allSongIds;
+            } else {
+                let viewTypeForIds = contextView.type;
+                if (contextView.type === 'user_profile') {
+                    viewTypeForIds = 'get_profile_songs';
+                }
+                const allIds = await fetchData('?action=get_view_ids', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        view_type: viewTypeForIds,
+                        param: contextView.param,
+                        sort: contextView.sort,
+                    })
+                });
+                if (!allIds || allIds.length === 0) { return; }
+                originalQueue = allIds;
+            }
+          
+            queue = [...originalQueue];
+            if (isShuffle) { 
+               isShuffle = false; toggleShuffle();
+            }
+            queueIndex = queue.findIndex(id => id === startId);
+            if (queueIndex === -1) { return; }
+            playSongById(startId);
         };
 
+        const hideMobileSidebar = () => {
+          const offcanvasEl = document.getElementById('main-nav-offcanvas');
+          if (window.innerWidth < 768 && offcanvasEl) {
+            const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
+            if (offcanvas) offcanvas.hide();
+          }
+        };
+        
         allNavLinks.forEach(link => {
-          if (link.getAttribute('data-bs-toggle') === 'modal' || link.id === 'logout-btn' || link.id === 'scan-btn' || link.id === 'install-pwa-btn' || link.id === 'clear-cache-btn') return;
+          if (link.getAttribute('data-bs-toggle') === 'modal' || link.id === 'logout-btn' || link.id === 'clear-cache-btn') return;
           link.addEventListener('click', e => {
             e.preventDefault();
             const navLink = e.currentTarget;
@@ -3724,15 +4264,12 @@ function perform_emergency_scan($db) {
             
             const viewType = navLink.dataset.view;
             let sort = 'artist_asc';
-            if (viewType === 'get_favorites' || viewType === 'get_user_playlists') sort = 'manual_order';
-            if (viewType === 'get_profile_songs') sort = 'title_asc';
+            if (['get_favorites', 'get_user_playlists'].includes(viewType)) sort = 'manual_order';
+            if (viewType === 'user_profile') sort = 'id_desc';
+            if (viewType === 'get_history') sort = 'history_desc';
 
             loadView({ type: viewType, param: '', sort: sort });
-            const offcanvasEl = document.getElementById('main-nav-offcanvas');
-            if (window.innerWidth < 768 && offcanvasEl) {
-              const offcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
-              if (offcanvas) offcanvas.hide();
-            }
+            hideMobileSidebar();
           });
         });
 
@@ -3750,41 +4287,27 @@ function perform_emergency_scan($db) {
           loadView({ ...currentView, sort: e.target.value });
         });
 
-        scanBtn.addEventListener('click', e => {
-          e.preventDefault();
-          if (scanBtn.classList.contains('scanning')) return;
-          scanBtn.classList.add('scanning');
-          scanStatusText.textContent = "Initializing scan...";
-          scanProgressBar.classList.remove('d-none');
-          fetch('?action=scan');
-          scanInterval = setInterval(async () => {
-            const data = await fetchData('?action=scan_status');
-            if (data && (data.status === 'finished' || data.status === 'error')) {
-              clearInterval(scanInterval);
-              scanBtn.classList.remove('scanning');
-              scanProgressBar.classList.add('d-none');
-              scanStatusText.textContent = data.message;
-              showToast(data.message, data.status === 'error' ? 'error' : 'success');
-              if (currentView.type === 'get_songs') {
-                loadView(currentView);
-              }
-            } else if (data) {
-              scanStatusText.textContent = data.message;
-            }
-          }, 2000);
-        });
-
-        if (emergencyScanModalEl && emergencyScanIframe) {
-          emergencyScanModalEl.addEventListener('show.bs.modal', () => {
-            emergencyScanIframe.src = '?action=emergency_scan';
+        if (fullScanModalEl && fullScanIframe) {
+          fullScanModalEl.addEventListener('show.bs.modal', () => {
+            fullScanIframe.src = '?action=full_scan';
           });
-          emergencyScanModalEl.addEventListener('hidden.bs.modal', () => {
-            emergencyScanIframe.src = 'about:blank';
+          fullScanModalEl.addEventListener('hidden.bs.modal', () => {
+            fullScanIframe.src = 'about:blank';
             if (currentView.type === 'get_songs') {
               loadView(currentView);
             }
           });
         }
+        
+        clearHistoryBtn.addEventListener('click', async () => {
+            if (confirm('Are you sure you want to clear your entire listening history? This cannot be undone.')) {
+                const result = await fetchData('?action=clear_history');
+                if (result && result.status === 'success') {
+                    showToast(result.message, 'success');
+                    loadView({type: 'get_history', param: '', sort: 'history_desc'});
+                }
+            }
+        });
         
         playerElements.playPauseBtn.forEach(btn => btn.addEventListener('click', togglePlayPause));
         playerElements.prevBtn.forEach(btn => btn.addEventListener('click', playPrev));
@@ -3843,6 +4366,14 @@ function perform_emergency_scan($db) {
             showSongItemContextMenu(moreBtn);
             return;
           }
+          const playlistMoreBtn = target.closest('.playlist-more-btn');
+          if (playlistMoreBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const playlistData = { publicId: playlistMoreBtn.dataset.publicId, name: playlistMoreBtn.dataset.name };
+            buildAndShowPlaylistContextMenu(playlistMoreBtn, playlistData);
+            return;
+          }
           const shareBtn = target.closest('.share-view-btn');
           if (shareBtn) {
             e.stopPropagation();
@@ -3856,20 +4387,23 @@ function perform_emergency_scan($db) {
             createPlaylistModal.show();
             return;
           }
-          const songArtistEl = target.closest('.song-artist');
+          const songArtistEl = target.closest('.song-artist, .item-subtitle');
           if (songArtistEl) {
-            e.stopPropagation();
-            loadView({ type: 'artist_songs', param: songArtistEl.dataset.artist, sort: 'album_asc' });
-            return;
+            const artistEl = songArtistEl.closest('[data-artist]');
+            if(artistEl) {
+              e.stopPropagation();
+              loadView({ type: 'artist_songs', param: artistEl.dataset.artist, sort: 'album_asc' });
+              return;
+            }
           }
-          const songAlbumEl = target.closest('.song-album');
+          const songAlbumEl = target.closest('.song-album, .shelf-item[data-album]');
           if (songAlbumEl) {
             e.stopPropagation();
             loadView({ type: 'album_songs', param: songAlbumEl.dataset.album, sort: 'title_asc' });
             return;
           }
           const cardEl = target.closest('.card');
-          if (cardEl) {
+          if (cardEl && !target.closest('.playlist-more-btn')) {
              let viewType, param, sort;
              if (cardEl.dataset.artist) {
                viewType = 'artist_songs';
@@ -3893,7 +4427,21 @@ function perform_emergency_scan($db) {
              }
              return;
           }
-          const songItem = target.closest('.song-item');
+          const seeAllButton = target.closest('.shelf-header button');
+          if (seeAllButton) {
+              e.stopPropagation();
+              const viewType = seeAllButton.dataset.view;
+              const viewParam = seeAllButton.dataset.viewParam;
+              let sort = 'artist_asc';
+              if (viewType === 'get_favorites' || viewType === 'get_user_playlists') sort = 'manual_order';
+              if (viewType === 'get_history') sort = 'history_desc';
+              if (viewType === 'artist_songs') sort = 'album_asc';
+
+              loadView({ type: viewType, param: viewParam || '', sort: sort });
+              return;
+          }
+
+          const songItem = target.closest('.song-item, .shelf-item[data-song-id]');
           if (songItem) {
             const songId = parseInt(songItem.dataset.songId);
             setQueueAndPlay(songId);
@@ -3901,9 +4449,8 @@ function perform_emergency_scan($db) {
         });
         
         document.addEventListener('click', e => {
-          if (!contextMenu.contains(e.target)) {
+          if (contextMenu.style.display === 'block' && !contextMenu.contains(e.target) && e.target !== contextMenuItemEl && !contextMenuItemEl?.contains(e.target)) {
             contextMenu.style.display = 'none';
-            contextMenuSongId = null;
           }
         });
 
@@ -3917,13 +4464,12 @@ function perform_emergency_scan($db) {
             genresModalInstance.hide();
           }
         };
-
+        
         contextMenu.addEventListener('click', async e => {
           const item = e.target.closest('.context-menu-item');
           if (!item) return;
-          const { action, name, id } = item.dataset;
+          const { action, name, id, publicId } = item.dataset;
           contextMenu.style.display = 'none';
-          contextMenuSongId = null;
 
           switch (action) {
             case 'close_menu':
@@ -3938,6 +4484,7 @@ function perform_emergency_scan($db) {
               if (action === 'go_artist') { view = 'artist_songs'; sort = 'album_asc'; }
               if (action === 'go_album') { view = 'album_songs'; sort = 'title_asc'; }
               loadView({ type: view, param: name, sort: sort });
+              hideMobileSidebar();
               break;
             case 'show_all_genres':
               showAllGenresModal();
@@ -3970,6 +4517,24 @@ function perform_emergency_scan($db) {
                     }
                 }
                 break;
+            case 'edit_playlist':
+              document.getElementById('edit-playlist-id-input').value = publicId;
+              document.getElementById('edit-playlist-name-input').value = name;
+              editPlaylistModal.show();
+              break;
+            case 'delete_playlist':
+              if (confirm(`Are you sure you want to delete the playlist "${name}"? This cannot be undone.`)) {
+                const result = await fetchData('?action=delete_playlist', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ public_id: publicId })
+                });
+                if (result.status === 'success') {
+                  showToast('Playlist deleted successfully.', 'success');
+                  loadView(currentView);
+                }
+              }
+              break;
             case 'edit_genre':
               const songIdToEdit = parseInt(id);
               const songDataForEdit = await fetchData(`?action=get_song_data&id=${songIdToEdit}`);
@@ -4035,6 +4600,7 @@ function perform_emergency_scan($db) {
               allNavLinks.forEach(l => l.classList.remove('active'));
               const genreNavLink = document.querySelector('.nav-link[data-view="get_genres"]');
               if(genreNavLink) genreNavLink.classList.add('active');
+              hideMobileSidebar();
             }, 200);
           });
         }
@@ -4068,6 +4634,11 @@ function perform_emergency_scan($db) {
           const timeLeft = duration - currentTime;
           playerElements.currentTime.forEach(el => el.textContent = formatTime(currentTime));
           playerElements.timeLeft.forEach(el => el.textContent = '-' + formatTime(timeLeft));
+          
+          if (currentSong && !currentSong.logged && currentTime >= PLAY_LOG_THRESHOLD) {
+            logPlay(currentSong.id);
+            currentSong.logged = true;
+          }
         });
 
         audio.addEventListener('loadedmetadata', () => {
@@ -4137,8 +4708,9 @@ function perform_emergency_scan($db) {
         const loginForm = document.getElementById('login-form');
         const registerForm = document.getElementById('register-form');
         const changePwForm = document.getElementById('change-password-form');
-        const logoutBtn = document.getElementById('logout-btn');
+        const profilePicForm = document.getElementById('profile-picture-form');
         const createPlaylistForm = document.getElementById('create-playlist-form');
+        const editPlaylistForm = document.getElementById('edit-playlist-form');
 
         loginForm.addEventListener('submit', async e => {
           e.preventDefault();
@@ -4153,6 +4725,7 @@ function perform_emergency_scan($db) {
             loginForm.reset();
             showToast('Login successful!', 'success');
             await checkSession();
+            loadView(currentView);
           }
         });
 
@@ -4188,14 +4761,37 @@ function perform_emergency_scan($db) {
             }
           }
         });
-
-        logoutBtn.addEventListener('click', async e => {
+        
+        editPlaylistForm.addEventListener('submit', async e => {
           e.preventDefault();
+          const publicId = document.getElementById('edit-playlist-id-input').value;
+          const name = document.getElementById('edit-playlist-name-input').value;
+          const data = await fetchData('?action=edit_playlist', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ public_id: publicId, name: name })
+          });
+          if (data && data.status === 'success') {
+            editPlaylistModal.hide();
+            showToast(data.message, 'success');
+            if (currentView.type === 'get_user_playlists') {
+              loadView(currentView);
+            }
+          }
+        });
+        
+        const handleLogout = async () => {
           await fetchData('?action=logout');
           currentUser = null;
           updateUIForAuthState();
           loadView({ type: 'get_songs', param: '', sort: 'artist_asc' });
-        });
+        };
+        document.getElementById('profile-dropdown-logout-desktop').addEventListener('click', handleLogout);
+        document.getElementById('profile-dropdown-logout-mobile').addEventListener('click', handleLogout);
+        document.getElementById('profile-dropdown-profile-desktop').addEventListener('click', () => loadView({type: 'user_profile'}));
+        document.getElementById('profile-dropdown-profile-mobile').addEventListener('click', () => loadView({type: 'user_profile'}));
+        document.getElementById('profile-dropdown-stats-desktop').addEventListener('click', () => loadView({type: 'get_user_stats'}));
+        document.getElementById('profile-dropdown-stats-mobile').addEventListener('click', () => loadView({type: 'get_user_stats'}));
+
 
         changePwForm.addEventListener('submit', async e => {
           e.preventDefault();
@@ -4209,6 +4805,28 @@ function perform_emergency_scan($db) {
             changePwForm.reset();
             showToast(data.message, 'success');
           }
+        });
+        
+        profilePicForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            const fileInput = document.getElementById('profile-picture-input');
+            if (fileInput.files.length === 0) {
+                showToast('Please select an image file.', 'error');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('profile_picture', fileInput.files[0]);
+
+            const result = await fetchData('?action=upload_profile_picture', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (result && result.status === 'success') {
+                showToast(result.message, 'success');
+                await checkSession();
+                bootstrap.Modal.getInstance(document.getElementById('settings-modal')).hide();
+            }
         });
 
         const uploadLimitText = document.getElementById('upload-limit-text');
@@ -4303,10 +4921,15 @@ function perform_emergency_scan($db) {
         }
 
         function updateUIForAuthState() {
-          document.body.classList.toggle('logged-in', !!currentUser);
-          document.body.classList.toggle('logged-out', !currentUser);
-          if (currentUser) {
+          const isLoggedIn = !!currentUser;
+          document.body.classList.toggle('logged-in', isLoggedIn);
+          document.body.classList.toggle('logged-out', !isLoggedIn);
+          if (isLoggedIn) {
             document.body.classList.toggle('user-verified', currentUser.verified === 'yes');
+            const picUrl = currentUser.profile_picture_url;
+            profilePictureHeaderDesktop.src = picUrl;
+            profilePictureHeaderMobile.src = picUrl;
+            profilePicturePreview.src = picUrl;
           } else {
             document.body.classList.remove('user-verified');
           }
