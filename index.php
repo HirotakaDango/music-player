@@ -5,7 +5,7 @@ if (isset($_GET['pwa'])) {
   if ($_GET['pwa'] == 'manifest') {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
-      "name" => "PHP Music Player",
+      "name" => "PHP Music",
       "short_name" => "Music",
       "start_url" => ".",
       "display" => "standalone",
@@ -1506,7 +1506,7 @@ if (isset($_GET['action'])) {
           }
           // Log the error for the admin, but don't return an error to the client.
           // This is a background task, and we don't want to show an error popup to the user if it fails.
-          error_log('PHP Music Player log_play error: ' . $e->getMessage());
+          error_log('PHP Music log_play error: ' . $e->getMessage());
         }
       }
       
@@ -1780,7 +1780,7 @@ function perform_full_scan($db) {
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PHP Music Player</title>
+    <title>PHP Music</title>
     <link rel="icon" type="image/svg+xml" href="?action=get_app_icon" />
     <meta name="theme-color" content="#121212"/>
     <link rel="manifest" href="?pwa=manifest">
