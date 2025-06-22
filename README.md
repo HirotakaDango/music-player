@@ -1,9 +1,11 @@
 # PHP Music
 
-A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, and manage your library—all in one place.
+A simple, fast, and modern self-hosted music player built in PHP, with a clean UI, SQLite backend, and full PWA (Progressive Web App) features. Scan your music collection, play songs in your browser, manage favorites/playlists, upload and edit your own songs, and more—all in one lightweight app.
 
 ![1](https://raw.githubusercontent.com/HirotakaDango/php-music-wiki/refs/heads/main/1.png)
 ![2](https://raw.githubusercontent.com/HirotakaDango/php-music-wiki/refs/heads/main/2.png) 
+
+---
 
 ## Features
 
@@ -17,12 +19,12 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 - ⚡ **PWA Support**: Install as an app on your phone or desktop. Works offline (caches static assets & some API). Manifest & service worker included.
 - 🚀 **No Database Setup**: Uses SQLite, auto-initialized on first run.
 - 👤 **User Accounts**: Register/login. Each user can upload their own music, manage their own favorites and uploads.
-- ☁️ **Upload Music**: Upload new songs (multi-file, genre auto-detected from file/tag or custom). Each user can upload up to 5 songs per day (daily limit, reset at midnight).
+- ☁️ **Upload Music**: Upload new songs (multi-file, genre auto-detected from file/tag or custom). Each user can upload up to 10 songs per day (daily limit, reset at midnight).
 - 🏷️ **Edit Genre**: Change genre from the context menu (only on your own uploads or as admin).
 - 🗑️ **Delete Songs**: Delete your own uploads from the UI/context menu.
 - ⬇️ **Download Songs**: Download your uploads directly from the context menu.
 - 🔐 **Session Security**: All write actions require login. Uploads require account verification by an admin.
-- 🛠️ **Settings**: Change password and manage your account.
+- 🛠️ **Settings**: Change password and manage your account and profile picture.
 - 🏢 **Admin Panel**: Admin can verify/un-verify user accounts, view user stats, and manage verification for uploads.
 - 🎶 **Playlists**: Create, manage, and reorder custom playlists for your favorite tracks.
 - 🔄 **Drag-and-drop Ordering**: Reorder favorites and playlist songs by dragging.
@@ -30,16 +32,25 @@ A simple, fast, and modern self-hosted music player built in PHP, with a clean U
 - 🗂️ **Infinite Scroll and Pagination**: Large libraries load smoothly with infinite scroll support.
 - 📑 **Metadata View**: View song metadata (title, artist, album, genre, year, duration) from the context menu.
 - 🆘 **Emergency Rescan**: If the library is corrupted or missing, an emergency scan can be performed to rebuild the database.
+- 👤 **Profile Pictures**: Upload and manage your profile picture.
+- 📊 **User Statistics**: View your uploads, favorites, playlists, and play count from the user stats page.
+- 📈 **Recommendations**: "For You" tab gives recommendations based on your play history, favorites, and genres.
+
+---
 
 ## Demo
 
 [Try it here.](http://phpmusic.rf.gd/)
+
+---
 
 ## Requirements
 
 - PHP 7.4+ with `pdo_sqlite`, `gd`, and `mbstring` extensions enabled.
 - [getID3 library](https://github.com/JamesHeinrich/getID3) (extract to a `getid3` folder inside the project).
 - A folder full of music files!
+
+---
 
 ## How to Activate SQLite in XAMPP/LAMPP
 
@@ -130,11 +141,15 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
     - **IMPORTANT:** After registering, an admin must verify your account before you can upload music (see below).
     - Click "Scan Library" to index your music folder.
 
+---
+
 ## Usage
 
 - **Register/Login**: Create a user account for full features (upload, scan, delete, edit, favorites, playlists).
+- **Profile Picture**: Set or change your profile picture from the settings modal (accepts PNG, JPG, GIF).
 - **Account Verification**: After registering, your account must be verified by an admin before you can upload music. Unverified users can still scan, browse, and play music.
-- **Scan Library**: Click "Scan Library" in the sidebar to index or refresh your library (scans all music except uploads).
+- **Upload Limit**: Each user can upload up to 10 songs per day (reset at midnight).
+- **Scan Library**: Click "Scan All" in the sidebar to index or refresh your library (scans all music except uploads).
 - **Emergency Rescan**: If the database is missing or corrupted, an emergency rescan can be triggered from the UI or by using a special action to rebuild your music library.
 - **Browse**: Use the sidebar to view all songs, favorites, albums, artists, genres, or your own uploads.
 - **Playlists**: Create, edit, and drag-to-reorder your own custom playlists. Add/remove songs easily.
@@ -142,13 +157,17 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - **Play Music**: Click a song to play, or use the player controls at the bottom.
 - **Favorites**: Click the heart icon to add/remove from favorites. Drag to reorder in "Favorites" view.
 - **Edit Genre**: Right-click (or tap "..." on mobile) a song and choose "Edit Genre" (your own uploads or as admin).
-- **Upload Music**: Click "Upload Song". You can upload multiple files at once; genre is auto-detected but can be overridden. **Upload limit:** 5 songs per user per day (resets at midnight).
+- **Upload Music**: Click "Upload Song". You can upload multiple files at once; genre is auto-detected but can be overridden. **Upload limit:** 10 songs per user per day (resets at midnight).
 - **Delete/Download**: Use context menu on your uploads to delete or download.
 - **Share**: Click the "Share" button on albums, artists, playlists, or songs to get a shareable link.
 - **PWA**: Click "Install App" (sidebar) if your browser supports PWAs. Works offline for playback and browsing.
 - **Infinite Scroll**: Large libraries auto-load more songs as you scroll.
 - **Context Menus**: Right-click or tap "..." for per-song actions like share, add to playlist, edit genre, delete, etc.
 - **Metadata View**: View song metadata (title, artist, album, genre, year, duration) via context menu.
+- **Recommendations**: Use the "For You" page for personalized recommendations based on your listening and favorites.
+- **User Statistics**: Access your uploads, favorites, playlists, and total play count from the "Statistics" (profile menu).
+
+---
 
 ### Admin Panel
 
@@ -156,6 +175,8 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - Default Admin Password: `admin`
 - Admin can verify/un-verify user accounts, view user details, and manage verification status for uploads.
 - Admin can also edit/delete any song.
+
+---
 
 ## How does it work?
 
@@ -171,6 +192,10 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - Playlists and favorites support drag-and-drop ordering.
 - Shareable views use query parameters for albums, artists, playlists, or specific songs.
 - **Emergency Scan**: If the music database is missing or corrupted, the app can attempt to rebuild it by rescanning the music directory.
+- **Profile Pictures**: Handled securely via the `upload_profile_picture` action and stored as webp images in the database.
+- **User Stats**: Gathered via dedicated endpoints and displayed in the stats view.
+
+---
 
 ## Customization
 
@@ -178,6 +203,8 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - **Audio formats**: Adjust the regex in `scan_music_directory()` in `index.php` to add more formats.
 - **Remote sources**: Would require backend refactoring.
 - **Public/Internet use**: Add your own authentication and security features (see below).
+
+---
 
 ## Security
 
@@ -188,6 +215,8 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - All write actions and uploads require login and a verified account.
 - Admin panel is protected by password.
 
+---
+
 ## Troubleshooting
 
 - **Scan errors**: Ensure `getid3/` exists and is accessible, and PHP can read music files and write `music.db`. If the database is missing/corrupt, use the emergency rescan.
@@ -195,6 +224,7 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 - **Missing album art**: Some files may lack embedded images (default SVG will show).
 - **Playback issues**: Browser support for some formats (like FLAC) may be limited.
 - **Genre not showing**: Use "Edit Genre" from the context menu to update.
+- **Profile picture issues**: Only PNG, JPG, and GIF files are supported (converted to webp).
 
 ---
 
