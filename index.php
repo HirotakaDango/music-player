@@ -180,7 +180,7 @@ if (isset($_GET['access']) && $_GET['access'] === 'admin') {
         text-decoration: none; padding: 0.75rem 1.5rem;
       }
       .nav-link:hover { background-color: var(--ytm-surface); color: var(--ytm-primary-text); }
-      .page-header { padding: 1.5rem 2rem 0rem 2rem; }
+      .page-header { padding: 1.5rem 2rem 1.5rem 2rem; }
       .content-title { font-size: 2rem; font-weight: 700; margin-bottom: 1.5rem; }
       .user-list { background-color: var(--ytm-surface); border-radius: 8px; overflow: hidden; }
       .user-list-header { background-color: var(--ytm-surface-2); font-weight: 500; }
@@ -1910,6 +1910,18 @@ function perform_full_scan($db) {
           background-color: var(--ytm-surface);
           left: 240px;
         }
+        .page-header {
+          position: -webkit-sticky;
+          position: sticky;
+          top: 0;
+          background-color: var(--ytm-bg);
+          z-index: 1010;
+          padding-top: 1.5rem;
+          padding-bottom: 1.5rem;
+        }
+        .song-item.history-item {
+          grid-template-columns: 40px minmax(0, 4fr) minmax(0, 3fr) minmax(0, 3fr) minmax(0, 2fr) 80px 40px;
+        }
       }
       .offcanvas-body .nav-link {
         padding: 0.75rem 1.5rem;
@@ -1952,7 +1964,7 @@ function perform_full_scan($db) {
         padding: 0.75rem 1.5rem;
       }
       .page-header {
-        padding: 1.5rem 2rem 0rem 2rem;
+        padding: 1.5rem 2rem 1.5rem 2rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -2012,7 +2024,7 @@ function perform_full_scan($db) {
       .content-title {
         font-size: 2rem;
         font-weight: 700;
-        margin-bottom: 1.5rem;
+        margin-bottom: 0; /* Adjusted for sticky header */
       }
       .song-list-header, .song-item {
         display: grid;
