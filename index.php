@@ -2992,7 +2992,7 @@ function perform_full_scan($db) {
       </div>
     </div>
     <div class="modal fade" id="settings-modal" tabindex="-1">
-      <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header border-0">
             <h5 class="modal-title">Settings</h5>
