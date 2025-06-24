@@ -100,8 +100,8 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
 1. **Clone the repo:**
 
     ```bash
-    git clone https://github.com/HirotakaDango/PHP-Music-Player.git
-    cd PHP-Music-Player
+    git clone https://github.com/HirotakaDango/PHP-Music.git
+    cd PHP-Music
     ```
 
 2. **Download getID3:**
@@ -109,7 +109,7 @@ If you are using **XAMPP** or **LAMPP** and encounter issues with SQLite:
     - [Download latest getID3](https://github.com/JamesHeinrich/getID3/releases)
     - Extract as a `getid3` folder inside the project root:
       ```
-      PHP-Music-Player/
+      PHP-Music/
         index.php
         getid3/
           getid3.php
