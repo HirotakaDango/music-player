@@ -2041,7 +2041,7 @@ function perform_full_scan($db) {
       }
       .song-item {
         cursor: pointer;
-        border-radius: 4px;
+        border-radius: 0;
       }
       .song-item.ghost {
         opacity: 0.4;
